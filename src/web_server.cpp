@@ -1,4 +1,3 @@
-
 #include <Arduino.h>
 #include <WiFi.h>
 #include <Preferences.h>
@@ -163,6 +162,11 @@ function updateStatus() {
     document.getElementById('conn-status').textContent = w.connected ? '✓ Connected' : '✗ Not connected';
     document.getElementById('conn-status').style.color = w.connected ? '#2ecc71' : '#e74c3c';
   }).catch(() => {});
+  // Update device info
+  fetch('/device_info').then(r => r.json()).then(info => {
+    document.getElementById('device-id').textContent = info.device_id || '–';
+    document.getElementById('device-name').textContent = info.device_name || '–';
+  }).catch(() => {});
 }
 function pollSensors() {
   fetch('/sensors').then(r => r.json()).then(d => {
@@ -196,6 +200,15 @@ String getDeviceName() {
   char name[32];
   snprintf(name, sizeof(name), "ESP32-%02X%02X%02X", mac[3], mac[4], mac[5]);
   return String(name);
+}
+
+// Get MAC address as string (e.g., "A1:B2:C3:D4:E5:F6")
+String getDeviceMacString() {
+  uint8_t mac[6];
+  WiFi.macAddress(mac);
+  char buf[18];
+  snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  return String(buf);
 }
 
 static void handleRoot() { server.send(200, "text/html", HTML_PAGE); }
@@ -240,10 +253,10 @@ static void handleSetWifi() {
 
 static void handleDeviceInfo() {
   char buf[128];
+  String devMac = getDeviceMacString();
   String devName = getDeviceName();
-  snprintf(buf, sizeof(buf), "{\"device_id\":\"%s\",\"device_name\":\"%s\",\"provisioned\":%s}",
-           devName.c_str(), devName.c_str(),
-           WiFi.status() == WL_CONNECTED ? "true" : "false");
+  snprintf(buf, sizeof(buf), "{\"device_id\":\"%s\",\"device_name\":\"%s\"}",
+           devMac.c_str(), devName.c_str());
   server.send(200, "application/json", buf);
 }
 
