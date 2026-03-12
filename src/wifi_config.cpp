@@ -3,6 +3,7 @@
 #include <WiFi.h>
 #include "config.h"
 
+
 //! ── Wi-Fi Configuration ───────────────────────────────────────────────────────
 
 static Preferences prefs;

@@ -8,4 +8,4 @@
 #define AP_PASSWORD         "12345678"
 
 // ── ThingsBoard ───────────────────────────────────────────────
-#define TB_TOKEN            "your_access_token"
+//#define TB_TOKEN            "your_access_token"
