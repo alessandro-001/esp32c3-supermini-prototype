@@ -21,5 +21,5 @@
 #define TEMP_MAX            35.0f
 
 // ── ThingsBoard ───────────────────────────────────────────────
-#define TB_HOST             "thingsboard.cloud"
-#define TB_PORT             1883
+// #define TB_HOST             "thingsboard.cloud"
+// #define TB_PORT             1883

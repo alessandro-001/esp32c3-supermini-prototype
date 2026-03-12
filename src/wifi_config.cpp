@@ -92,10 +92,9 @@ const String& wifiConfigSsid() {
 bool wifiConfigConnect(uint32_t timeoutMs) {
   if (gSsid.isEmpty()) return false; // No SSID configured
 
-  WiFi.disconnect(true);
+  WiFi.disconnect(true, true); // Disconnect and erase previous Wi-Fi config
   delay(200);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(gSsid.c_str(), gPass.c_str());
+  WiFi.begin(gSsid.c_str(), gPass.c_str()); // Start Wi-Fi connection
 
   Serial.printf("[WiFi] Connecting to %s", gSsid.c_str());
 
@@ -126,7 +125,7 @@ void wifiApStart() {
   WiFi.mode(WIFI_AP);
   delay(200);
 
-  bool ok = WiFi.softAP(AP_SSID, NULL, 1);
+  bool ok = WiFi.softAP(AP_SSID, NULL, 6);
   delay(1000);
 
   if (!ok) {

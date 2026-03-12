@@ -4,6 +4,7 @@
 #include "sensors.h"
 #include "wifi_config.h"
 #include "web_server.h"
+#include <WiFi.h>
 
 // ── NeoPixel RGB ──────────────────────────────────────────────────────────────
 Adafruit_NeoPixel ring(NUM_LEDS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
@@ -28,17 +29,20 @@ void setup() {
   // Sensor init
   shtc3Init();
 
-  // WiFi — try STA, fall back to AP
-  wifiConfigBegin(HOME_SSID, HOME_PASSWORD);
-  if (!wifiConfigConnect(10000)) {
-    wifiApStart();
-  }
 
-  // Web server init
-  webServerInit();
+  // Start AP (always available for configuration)
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.softAP(AP_SSID, AP_PASSWORD, 6); // Use channel 6 for reliability
+  Serial.printf("[AP] Started: %s @ %s\n", AP_SSID, WiFi.softAPIP().toString().c_str());
+
+  // Load and connect to saved WiFi credentials (defaults from secrets.h)
+  wifiConfigBegin(HOME_SSID, HOME_PASSWORD);
+  bool wifiConnected = wifiConfigConnect(10000); // 10 seconds timeout
 
   Serial.println("\nTemp (C)\tHumidity (%)");
   Serial.println("─────────────────────────────────────");
+
+  webServerInit();
 }
 
 void loop() {
