@@ -2,6 +2,9 @@
 #include <Preferences.h>
 #include <WiFi.h>
 #include "config.h"
+#include "web_server.h"
+#include "wifi_config.h"
+#include "secrets.h"
 
 
 //! ── Wi-Fi Configuration ───────────────────────────────────────────────────────
@@ -123,7 +126,7 @@ void wifiApStart() {
   WiFi.mode(WIFI_AP);
   delay(200);
 
-  bool ok = WiFi.softAP(AP_SSID, AP_PASSWORD, 1);
+  bool ok = WiFi.softAP(AP_SSID, NULL, 1);
   delay(1000);
 
   if (!ok) {
