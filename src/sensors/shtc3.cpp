@@ -4,6 +4,8 @@
 #include "config.h"
 #include "sensors.h"
 
+//* SHTC3 sensor module for temperature and humidity
+
 // ── Module-private objects & state ───────────────────────────────────────────
 static Adafruit_SHTC3 _shtc3;
 static uint32_t       _lastRead = 0;
@@ -26,7 +28,6 @@ static void i2cScan() {
     }
   }
   if (found == 0) Serial.println("  No I2C devices found! Check wiring.");
-  // SHTC3 should appear at 0x70
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -45,7 +46,7 @@ void shtc3Init() {
   }
 }
 
-void shtc3Read() {
+void shtc3Read() { //
   if (!sensorOK) return;
 
   uint32_t now = millis();

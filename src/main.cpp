@@ -6,6 +6,8 @@
 #include "web_server.h"
 #include <WiFi.h>
 
+//* ESP32C3 Smart Monitor Prototype - MAIN
+
 // ── NeoPixel RGB ──────────────────────────────────────────────────────────────
 Adafruit_NeoPixel ring(NUM_LEDS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 

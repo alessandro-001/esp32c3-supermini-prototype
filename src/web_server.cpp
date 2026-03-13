@@ -11,6 +11,8 @@
 
 WebServer server(80);
 
+//* Wi-Fi Configuration Implementation + Web Server Endpoints + UI
+
 const char HTML_PAGE[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
 <html lang="en">
@@ -39,7 +41,7 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
     .net:hover { background:#333; }
     .hidden { display:none !important; }
     .step { background:#1a1a2e; border:1px solid #333; border-radius:10px; padding:16px; margin:16px 0; width:100%; box-sizing:border-box; }
-    .step-header { display:flex; align-items:center; gap:10px; margin-bottom:12px; flex-wrap:wrap; }
+    .step-header { display:flex; align-items:center; gap:10px; margin-bottom:12px; flex-direction:row; flex-wrap:nowrap; }
     .step-num { background:#00d2ff; color:#000; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:0.9rem; flex-shrink:0; }
     .step-title { font-size:1.1rem; font-weight:bold; }
     .step.completed { border-color:#2ecc71; }
@@ -51,40 +53,53 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
       body { padding: 4vw; font-size: 1em; }
       .step { padding: 4vw; margin: 4vw 0; }
       h1 { font-size: 1.1rem; }
-      .row, .step-header { flex-direction: column; align-items: flex-start; gap: 0.5em; }
+      .row { flex-direction: column; align-items: flex-start; gap: 0.5em; }
+      .step-header { flex-direction: row; align-items: center; gap: 10px; }
       button, input { font-size: 1em; }
     }
   </style>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" />
 </head>
 <body>
+  <!-- AP Title -->
   <h1>Web AP: ESP32 Device Setup</h1>
-
-  <!-- Step 1: Device Info (placeholder) -->
+  
+  <!-- Device Info -->
   <div class="step" id="step1">
-    <div class="step-header">
-      <div class="step-num">1</div>
-      <div class="step-title">Device Information</div>
+  <div class="step-header">
+  <span class="material-symbols-outlined" style="font-size:28px;color:#00d2ff;">memory</span>
+  <div class="step-title">Device Information</div>
+  </div>
+  <div class="row">
+  <span>Device ID</span>
+  <span class="val" id="device-id">–</span>
+  </div>
+  <div class="row">
+  <span>Device Name</span>
+  <span class="val" id="device-name">–</span>
+  </div>
+  <div class="row">
+  <span>Status</span>
+  <span id="prov-status">–</span>
+  </div>
+  </div>
+  
+  <!-- Live Data (sensor readings) -->
+  <div class="step" id="step4">
+    <div class="step-header"><span class="material-symbols-outlined" style="font-size:28px;color:#00d2ff;">sensors</span><div class="step-title">Live Sensor Data</div></div>
+    <div class="row">
+      <span>🌡 Temperature</span>
+      <span><span class="val" id="temp">–</span> °C</span>
     </div>
     <div class="row">
-      <span>Device ID</span>
-      <span class="val" id="device-id">–</span>
-    </div>
-    <div class="row">
-      <span>Device Name</span>
-      <span class="val" id="device-name">–</span>
-    </div>
-    <div class="row">
-      <span>Status</span>
-      <span id="prov-status">–</span>
+      <span>💧 Humidity</span>
+      <span><span class="val" id="hum">–</span> %</span>
     </div>
   </div>
 
-  <!-- Step 2: WiFi -->
+  <!-- WiFi Connection -->
   <div class="step" id="step2">
-    <div class="step-header">
-      <div class="step-num">2</div>
-      <div class="step-title">WiFi Connection</div>
-    </div>
+    <div class="step-header"><span class="material-symbols-outlined" style="font-size:28px;color:#00d2ff;">wifi</span><div class="step-title">WiFi Connection</div></div>
     <div class="row">
       <span>Network</span>
       <span id="curr-wifi">–</span>
@@ -106,21 +121,6 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
     </div>
   </div>
 
-  <!-- Step 4: Live Data (sensor readings) -->
-  <div class="step" id="step4">
-    <div class="step-header">
-      <div class="step-num">3</div>
-      <div class="step-title">Live Sensor Data</div>
-    </div>
-    <div class="row">
-      <span>🌡 Temperature</span>
-      <span><span class="val" id="temp">–</span> °C</span>
-    </div>
-    <div class="row">
-      <span>💧 Humidity</span>
-      <span><span class="val" id="hum">–</span> %</span>
-    </div>
-  </div>
 
   <div id="msg"></div>
 
@@ -189,10 +189,11 @@ setInterval(updateStatus, 5000);
 </html>
 )rawliteral";
 
-// --- State for QR provisioning ---
+// Global variables to hold QR provisioning data (when needed)
 static String qrDeviceKey = "";
 static String qrDeviceSecret = "";
 static String qrDeviceName = "";
+
 // Generate a unique device name from MAC address
 String getDeviceName() {
   uint8_t mac[6];
@@ -211,10 +212,11 @@ String getDeviceMacString() {
   return String(buf);
 }
 
+// Handle root URL - serve the HTML page
 static void handleRoot() { server.send(200, "text/html", HTML_PAGE); }
 
 
-
+// Escape special characters in JSON strings
 static String escapeJson(const String& input) {
   String output;
   for (unsigned int i = 0; i < input.length(); i++) {
@@ -312,6 +314,7 @@ static void handleSensors() {
   server.send(200, "application/json", buf);
 }
 
+// Initialize web server and define endpoints
 void webServerInit() {
   server.on("/", handleRoot);
   server.on("/sensors", handleSensors);
