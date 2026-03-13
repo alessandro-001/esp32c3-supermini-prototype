@@ -20,6 +20,11 @@
 #define TEMP_MIN            15.0f
 #define TEMP_MAX            35.0f
 
-// ── ThingsBoard ───────────────────────────────────────────────
-// #define TB_HOST             "thingsboard.cloud"
-// #define TB_PORT             1883
+// ── ThingsBoard ───────────────────────────────────────────────────────────────
+#define TB_SERVER     "mqtt.thingsboard.cloud"          // ThingsBoard MQTT broker
+#define TB_PORT       1883                              // MQTT port
+#define TB_HTTP_HOST  "https://thingsboard.cloud"       // for provisioning HTTP
+
+//! ── Device Identity ───────────────────────────────────────────────────────────
+#define DEVICE_GROUP        "PROTO_BF_DEVICES"
+#define FIRMWARE_VERSION    "1.0.0"
