@@ -69,7 +69,7 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
     #popup-msg.error { background: #3d1a1a; color: #e74c3c; border-bottom: 2px solid #e74c3c; }
     #popup-msg.info { background: #1a2a3d; color: #3498db; border-bottom: 2px solid #3498db; }
   </style>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" />
+
 </head>
 <body>
 <div id="popup-msg" style="position:fixed;top:-60px;left:0;width:100%;z-index:9999;text-align:center;transition:top 0.4s cubic-bezier(.4,2,.6,1);padding:16px 0;font-size:1.1rem;font-weight:bold;"></div>
@@ -79,7 +79,7 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
   <!-- Device Info -->
   <div class="step" id="step1">
   <div class="step-header">
-  <span class="material-symbols-outlined" style="font-size:28px;color:#00d2ff;">memory</span>
+  <span style="font-size:28px;">🔌</span>
   <div class="step-title">Device Information</div>
   </div>
   <div class="row">
@@ -92,9 +92,9 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
   </div>
   <div class="row">
     <span>Status</span>
-    <span id="prov-status">–</span>
+    <span id="prov-status">Checking...</span>
   </div>
-  <div class="row">
+  <div class="row" id="register-row">
     <button id="register-btn" onclick="registerDevice()">Register Device</button>
   </div>
   <div id="prov-msg"></div>
@@ -102,7 +102,7 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
   
   <!-- Live Data (sensor readings) -->
   <div class="step" id="step4">
-    <div class="step-header"><span class="material-symbols-outlined" style="font-size:28px;color:#00d2ff;">sensors</span><div class="step-title">Live Sensor Data</div></div>
+    <div class="step-header"><span style="font-size:28px;">📡</span><div class="step-title">Live Sensor Data</div></div>
     <div class="row">
       <span>🌡 Temperature</span>
       <span><span class="val" id="temp">–</span> °C</span>
@@ -115,7 +115,7 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
 
   <!-- WiFi Connection -->
   <div class="step" id="step2">
-    <div class="step-header"><span class="material-symbols-outlined" style="font-size:28px;color:#00d2ff;">wifi</span><div class="step-title">WiFi Connection</div></div>
+    <div class="step-header"><span style="font-size:28px;">📶</span><div class="step-title">WiFi Connection</div></div>
     <div class="row">
       <span>Network</span>
       <span id="curr-wifi">–</span>
@@ -140,7 +140,7 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
   <!-- Thresholds -->
   <div class="step" id="step-thresh">
     <div class="step-header">
-      <div class="step-num">⚙</div>
+      <span style="font-size:28px;">⚠️</span>
       <div class="step-title">Alert Thresholds</div>
     </div>
     <div class="input-row">
@@ -157,12 +157,7 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
     <div id="thresh-msg"></div>
   </div>
 
-
-
-
 <script>
-
-//? JavaScript for handling UI interactions, AJAX calls to ESP32 endpoints, and dynamic updates
 function loadThresholds() {
   fetch('/get_thresh')
     .then(r => r.json())
@@ -172,7 +167,25 @@ function loadThresholds() {
     });
 }
 
-//? Save thresholds to ESP32 via POST request
+function checkProvStatus() {
+  fetch('/prov_status')
+    .then(r => r.json())
+    .then(res => {
+      const statusEl = document.getElementById('prov-status');
+      const registerRow = document.getElementById('register-row');
+      if (res.provisioned) {
+        statusEl.innerHTML = '<span style="color:#2ecc71;font-weight:bold;">Active ✅</span>';
+        registerRow.style.display = 'none'; // hide button if already registered
+      } else {
+        statusEl.innerHTML = '<span style="color:#e74c3c;font-weight:bold;">Not registered ❌</span>';
+        registerRow.style.display = '';
+      }
+    })
+    .catch(() => {
+      document.getElementById('prov-status').textContent = 'Unknown';
+    });
+}
+
 function saveThresholds() {
   const temp = parseFloat(document.getElementById("thresh-temp").value);
   const hum = parseFloat(document.getElementById("thresh-hum").value);
@@ -186,7 +199,7 @@ function saveThresholds() {
     .then(() => showMsg("✓ Thresholds saved!", "success"))
     .catch(() => showMsg("Failed to save", "error"));
 }
-//? Handle device registration (provisioning) when user clicks "Register Device" button
+
 function registerDevice() {
   const btn = document.getElementById('register-btn');
   btn.disabled = true;
@@ -195,14 +208,12 @@ function registerDevice() {
     .then(r => r.json())
     .then(res => {
       if (res.status === 'ok') {
-        showMsg('Device registered! Restarting MQTT...', 'success');
-        document.getElementById('prov-status').textContent = 'Provisioned';
-        // Optionally, trigger MQTT reconnect by reloading page or calling endpoint
+        showMsg('Device registered! Connecting to ThingsBoard...', 'success');
+        checkProvStatus(); // refresh status → shows Active ✅ and hides button
       } else {
         showMsg(res.message || 'Provisioning failed', 'error');
-        document.getElementById('prov-status').textContent = 'Not provisioned';
+        btn.disabled = false;
       }
-      btn.disabled = false;
       updateStatus();
     })
     .catch(() => {
@@ -211,7 +222,6 @@ function registerDevice() {
     });
 }
   
-//? Scan for Wi-Fi networks and display results
 function scanWifi() {
   const nets = document.getElementById('networks');
   nets.innerHTML = 'Scanning...';
@@ -220,7 +230,6 @@ function scanWifi() {
   }).catch(() => nets.innerHTML = 'Scan failed');
 }
 
-//? When user selects a Wi-Fi network, show the form to enter password (if needed)
 function selectNet(ssid, secure) {
   document.getElementById('wifi-ssid').value = ssid;
   document.getElementById('wifi-pass').value = '';
@@ -228,7 +237,6 @@ function selectNet(ssid, secure) {
   if (secure) document.getElementById('wifi-pass').focus();
 }
 
-//? Save Wi-Fi credentials and attempt connection
 function saveWifi() {
   const ssid = document.getElementById('wifi-ssid').value.trim();
   const pass = document.getElementById('wifi-pass').value;
@@ -248,21 +256,18 @@ function saveWifi() {
   }).catch(() => showMsg('Connection failed', 'error'));
 }
 
-//? Periodically update Wi-Fi connection status and device info
 function updateStatus() {
   fetch('/wifi').then(r => r.json()).then(w => {
     document.getElementById('curr-wifi').textContent = w.ssid || '–';
     document.getElementById('conn-status').textContent = w.connected ? '✓ Connected' : '✗ Not connected';
     document.getElementById('conn-status').style.color = w.connected ? '#2ecc71' : '#e74c3c';
   }).catch(() => {});
-  // Update device info
   fetch('/device_info').then(r => r.json()).then(info => {
     document.getElementById('device-id').textContent = info.device_id || '–';
     document.getElementById('device-name').textContent = info.device_name || '–';
   }).catch(() => {});
 }
 
-//? Fetch live sensor data every few seconds and update the UI
 function pollSensors() {
   fetch('/sensors').then(r => r.json()).then(d => {
     document.getElementById('temp').textContent = d.temp !== undefined ? d.temp.toFixed(1) : '–';
@@ -270,7 +275,6 @@ function pollSensors() {
   });
 }
 
-//? Utility function to show temporary messages to the user
 function showMsg(txt, type) {
   const el = document.getElementById('popup-msg');
   el.textContent = txt;
@@ -283,232 +287,224 @@ function showMsg(txt, type) {
   }, 5000);
 }
 
-updateStatus();                   // Initial status update
-loadThresholds();                 // Load saved thresholds into form
-pollSensors();                    // Start polling sensor data
-setInterval(pollSensors, 3000);   // Update sensor data every 3 seconds
-setInterval(updateStatus, 5000);  // Update connection status every 5 seconds
+updateStatus();
+loadThresholds();
+checkProvStatus();
+pollSensors();
+setInterval(pollSensors, 3000);
+setInterval(updateStatus, 5000);
 </script>
 </body>
 </html>
 )rawliteral";
 
-// Global variables to hold QR provisioning data (when needed)
-static String qrDeviceKey = "";
-static String qrDeviceSecret = "";
-static String qrDeviceName = "";
-float threshTemp = 30.0;
-float threshHum = 80.0;
+// ── Global threshold variables (single source of truth) ──────────────────────
+float threshTemp = 30.0f;
+float threshHum  = 80.0f;
+
 extern float sensorTemp;
 extern float sensorHum;
-extern bool alertTemp;
-extern bool alertHum;
+extern bool  alertTemp;
+extern bool  alertHum;
 
-// Generate a unique device name from MAC address
-String getDeviceName() {
-  uint8_t mac[6];
-  WiFi.macAddress(mac);
-  char name[32];
-  snprintf(name, sizeof(name), "ESP32-%02X%02X%02X", mac[3], mac[4], mac[5]);
-  return String(name);
-}
+// ── NVS namespace (consistent across load/save) ───────────────────────────────
+static const char* THRESH_NVS_NS = "thresholds";
 
-// Get MAC address as string (e.g., "A1:B2:C3:D4:E5:F6")
-String getDeviceMacString() {
-  uint8_t mac[6];
-  WiFi.macAddress(mac);
-  char buf[18];
-  snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-  return String(buf);
-}
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-// Handle root URL - serve the HTML page
-static void handleRoot() { server.send(200, "text/html", HTML_PAGE); }
-
-
-// Escape special characters in JSON strings
 static String escapeJson(const String& input) {
-  String output;
-  for (unsigned int i = 0; i < input.length(); i++) {
-    char c = input[i];
-    if (c == '"') output += "\\\"";
-    else if (c == '\\') output += "\\\\";
-    else output += c;
-  }
-  return output;
+    String output;
+    for (unsigned int i = 0; i < input.length(); i++) {
+        char c = input[i];
+        if      (c == '"')  output += "\\\"";
+        else if (c == '\\') output += "\\\\";
+        else if (c == '\n') output += "\\n";
+        else if (c == '\r') output += "\\r";
+        else if (c == '\t') output += "\\t";
+        else if (c == '<')  output += "\\u003c";
+        else if (c == '>')  output += "\\u003e";
+        else                output += c;
+    }
+    return output;
 }
 
-// Get current Wi-Fi status and SSID
-static void handleWifiGet() {
-  char buf[160];
-  snprintf(buf, sizeof(buf), "{\"ssid\":\"%s\",\"connected\":%s}",
-           escapeJson(wifiConfigSsid()).c_str(),
-           WiFi.status() == WL_CONNECTED ? "true" : "false");
-  server.send(200, "application/json", buf);
+static String getDeviceName() {
+    uint8_t mac[6];
+    WiFi.macAddress(mac);
+    char name[32];
+    // Use all 6 MAC bytes to match ThingsBoard device name format: ESP32-8856A674FCE0
+    snprintf(name, sizeof(name), "ESP32-%02X%02X%02X%02X%02X%02X",
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    return String(name);
 }
 
-// Scan for Wi-Fi networks and return JSON list
-static void handleScan() { server.send(200, "application/json", wifiScanNetworks()); }
-
-// Handle Wi-Fi configuration POST request
-static void handleSetWifi() {
-  if (!server.hasArg("ssid") || !server.hasArg("pass")) {
-    server.send(400, "text/plain", "Missing ssid/pass");
-    return;
-  }
-  String ssid = server.arg("ssid");
-  String pass = server.arg("pass");
-  if (!wifiConfigSave(ssid, pass)) {
-    server.send(400, "text/plain", "Invalid password");
-    return;
-  }
-  bool ok = wifiConfigConnect(10000);
-  server.send(200, "text/plain", ok ? "Connected to " + ssid : "Connection failed");
+static String getDeviceMacString() {
+    uint8_t mac[6];
+    WiFi.macAddress(mac);
+    char buf[18];
+    snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X",
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    return String(buf);
 }
 
-// Get device information (ID and name) as JSON
-static void handleDeviceInfo() {
-  char buf[128];
-  String devMac = getDeviceMacString();
-  String devName = getDeviceName();
-  snprintf(buf, sizeof(buf), "{\"device_id\":\"%s\",\"device_name\":\"%s\"}",
-           devMac.c_str(), devName.c_str());
-  server.send(200, "application/json", buf);
-}
-
-// Handle QR provisioning data sent from the mobile app
-static void handleSetQrData() {
-  if (!server.hasArg("plain")) {
-    server.send(400, "application/json", "{\"status\":\"error\"}");
-    return;
-  }
-  StaticJsonDocument<256> doc;
-  if (deserializeJson(doc, server.arg("plain"))) {
-    server.send(400, "application/json", "{\"status\":\"error\"}");
-    return;
-  }
-  const char* dk = doc["dk"];
-  const char* ds = doc["ds"];
-  const char* n = doc["n"];
-  if (dk) qrDeviceKey = dk;
-  if (ds) qrDeviceSecret = ds;
-  if (n) qrDeviceName = n;
-  Serial.printf("[QR] ✓ %s\n", qrDeviceName.c_str());
-  server.send(200, "application/json", "{\"status\":\"ok\"}");
-}
-
-// Handle provisioning request: send device info to ThingsBoard and get token
-static void handleProvision() {
-  if (!WiFi.isConnected()) {
-    server.send(200, "application/json", "{\"status\":\"error\",\"message\":\"WiFi not connected\"}");
-    return;
-  }
-  String token = provisioningRequest();
-  if (!token.isEmpty()) {
-    mqttSetToken(token);
-    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Provisioning successful\"}");
-  } else {
-    server.send(200, "application/json", "{\"status\":\"error\",\"message\":\"Provisioning failed\"}");
-  }
-}
-
-// Handle token update from web interface (for manual token entry)
-static void handleSetToken() {
-  if (!server.hasArg("token")) {
-    server.send(400, "application/json", "{\"status\":\"error\"}");
-    return;
-  }
-  String token = server.arg("token");
-  if (token.length() < 5) {
-    server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Token too short\"}");
-    return;
-  }
-  Preferences prefs;
-  prefs.begin("provision", false);
-  prefs.putString("token", token);
-  prefs.end();
-  Serial.printf("[Web] ✅ Token saved: %.10s...\n", token.c_str());
-  server.send(200, "application/json", "{\"status\":\"ok\"}");
-}
-
-
-// Minimal /sensors endpoint for temperature and humidity
-static void handleSensors() {
-  char buf[64];
-  extern float sensorTemp, sensorHum;
-  snprintf(buf, sizeof(buf), "{\"temp\":%.1f,\"hum\":%.1f}", sensorTemp, sensorHum);
-  server.send(200, "application/json", buf);
-}
-
-// --- Thresholds persistence ---
-static float thresholdTemp = 30.0f;
-static float thresholdHum = 80.0f;
+// ── Threshold persistence ─────────────────────────────────────────────────────
 
 static void loadThresholdsFromNVS() {
-  Preferences prefs;
-  prefs.begin("thresh", true);
-  thresholdTemp = prefs.getFloat("temp", 30.0f);
-  thresholdHum = prefs.getFloat("hum", 80.0f);
-  prefs.end();
+    Preferences prefs;
+    prefs.begin(THRESH_NVS_NS, true); // read-only
+    threshTemp = prefs.getFloat("temp", 30.0f);
+    threshHum  = prefs.getFloat("hum",  80.0f);
+    prefs.end();
+    Serial.printf("[Thresh] Loaded — Temp: %.1f, Hum: %.1f\n", threshTemp, threshHum);
 }
 
 static void saveThresholdsToNVS(float temp, float hum) {
-  Preferences prefs;
-  prefs.begin("thresh", false);
-  prefs.putFloat("temp", temp);
-  prefs.putFloat("hum", hum);
-  prefs.end();
+    Preferences prefs;
+    prefs.begin(THRESH_NVS_NS, false); // read-write
+    prefs.putFloat("temp", temp);
+    prefs.putFloat("hum",  hum);
+    prefs.end();
+}
+
+// ── HTTP Handlers ─────────────────────────────────────────────────────────────
+
+static void handleRoot() {
+    server.send(200, "text/html", HTML_PAGE);
+}
+
+static void handleWifiGet() {
+    char buf[160];
+    snprintf(buf, sizeof(buf), "{\"ssid\":\"%s\",\"connected\":%s}",
+             escapeJson(wifiConfigSsid()).c_str(),
+             WiFi.status() == WL_CONNECTED ? "true" : "false");
+    server.send(200, "application/json", buf);
+}
+
+static void handleScan() {
+    server.send(200, "application/json", wifiScanNetworks());
+}
+
+static void handleSetWifi() {
+    if (!server.hasArg("ssid") || !server.hasArg("pass")) {
+        server.send(400, "text/plain", "Missing ssid/pass");
+        return;
+    }
+    String ssid = server.arg("ssid");
+    String pass = server.arg("pass");
+    if (!wifiConfigSave(ssid, pass)) {
+        server.send(400, "text/plain", "Invalid password");
+        return;
+    }
+    bool ok = wifiConfigConnect(10000);
+    server.send(200, "text/plain", ok ? "Connected to " + ssid : "Connection failed");
+}
+
+static void handleDeviceInfo() {
+    char buf[128];
+    String devMac  = getDeviceMacString();
+    String devName = getDeviceName();
+    snprintf(buf, sizeof(buf), "{\"device_id\":\"%s\",\"device_name\":\"%s\"}",
+             devMac.c_str(), devName.c_str());
+    server.send(200, "application/json", buf);
+}
+
+static void handleProvStatus() {
+    bool provisioned = provisioningHasToken();
+    char buf[64];
+    snprintf(buf, sizeof(buf), "{\"provisioned\":%s}", provisioned ? "true" : "false");
+    server.send(200, "application/json", buf);
+}
+
+static void handleProvision() {
+    if (!WiFi.isConnected()) {
+        server.send(200, "application/json",
+                    "{\"status\":\"error\",\"message\":\"WiFi not connected\"}");
+        return;
+    }
+    String token = provisioningRequest();
+    if (!token.isEmpty()) {
+        mqttSetToken(token);
+        server.send(200, "application/json",
+                    "{\"status\":\"ok\",\"message\":\"Provisioning successful\"}");
+    } else {
+        server.send(200, "application/json",
+                    "{\"status\":\"error\",\"message\":\"Provisioning failed\"}");
+    }
+}
+
+static void handleSetToken() {
+    if (!server.hasArg("token")) {
+        server.send(400, "application/json", "{\"status\":\"error\"}");
+        return;
+    }
+    String token = server.arg("token");
+    if (token.length() < 5) {
+        server.send(400, "application/json",
+                    "{\"status\":\"error\",\"message\":\"Token too short\"}");
+        return;
+    }
+    Preferences prefs;
+    prefs.begin("provision", false);
+    prefs.putString("token", token);
+    prefs.end();
+    Serial.printf("[Web] ✅ Token saved: %.10s...\n", token.c_str());
+    server.send(200, "application/json", "{\"status\":\"ok\"}");
+}
+
+static void handleSensors() {
+    char buf[64];
+    snprintf(buf, sizeof(buf), "{\"temp\":%.1f,\"hum\":%.1f}", sensorTemp, sensorHum);
+    server.send(200, "application/json", buf);
 }
 
 static void handleSetThresh() {
-  Serial.println("[DEBUG] handleSetThresh called"); // Debug print
+    if (server.hasArg("temp")) threshTemp = server.arg("temp").toFloat();
+    if (server.hasArg("hum"))  threshHum  = server.arg("hum").toFloat();
 
-  if (server.hasArg("temp")) threshTemp = server.arg("temp").toFloat();
-  if (server.hasArg("hum"))  threshHum  = server.arg("hum").toFloat();
+    // FIX: use consistent NVS namespace via helper
+    saveThresholdsToNVS(threshTemp, threshHum);
 
-  Preferences prefs;
-  prefs.begin("thresholds", false);
-  prefs.putFloat("temp", threshTemp);
-  prefs.putFloat("hum", threshHum);
-  prefs.end();
+    Serial.printf("[Thresh] Saved — Temp: %.1f, Hum: %.1f\n", threshTemp, threshHum);
 
-  Serial.printf("[Thresh] Saved - Temp: %.1f, Hum: %.1f\n", threshTemp, threshHum);
+    // Update alert flags immediately
+    alertTemp = (sensorTemp > threshTemp);
+    alertHum  = (sensorHum  > threshHum);
 
-  // Update alerts immediately
-  alertTemp = (sensorTemp > threshTemp);
-  alertHum  = (sensorHum > threshHum);
+    // FIX: only publish if MQTT is ready
+    if (mqttIsConnected()) {
+        mqttPublishAttributes();
+    }
 
-  // Publish new thresholds to ThingsBoard (if you have this function)
-  mqttPublishAttributes();
-
-  server.send(200, "text/plain", "OK");
+    server.send(200, "text/plain", "OK");
 }
 
 static void handleGetThresh() {
-  char buf[64];
-  snprintf(buf, sizeof(buf), "{\"temp\":%.2f,\"hum\":%.2f}", thresholdTemp, thresholdHum);
-  server.send(200, "application/json", buf);
+    char buf[64];
+    // FIX: use single threshTemp/threshHum variables (no more thresholdTemp/thresholdHum)
+    snprintf(buf, sizeof(buf), "{\"temp\":%.2f,\"hum\":%.2f}", threshTemp, threshHum);
+    server.send(200, "application/json", buf);
 }
 
-//* Initialize web server and define HTTP endpoints
+// ── Server Init ───────────────────────────────────────────────────────────────
+
 void webServerInit() {
-  server.on("/", handleRoot);
-  server.on("/sensors", handleSensors);
-  server.on("/wifi", HTTP_GET, handleWifiGet);
-  server.on("/scan", HTTP_GET, handleScan);
-  server.on("/set_wifi", HTTP_POST, handleSetWifi);
-  server.on("/provision", HTTP_POST, handleProvision);
-  server.on("/device_info", HTTP_GET, handleDeviceInfo);
-  server.on("/set_token", HTTP_POST, handleSetToken);
-  server.on("/set_qr_data", HTTP_POST, handleSetQrData);
-  server.on("/set_qr_data", HTTP_POST, handleSetQrData);
-  server.on("/set_thresh", handleSetThresh);
-  server.on("/get_thresh", HTTP_GET, handleGetThresh);
-  loadThresholdsFromNVS();
-  server.begin();
-  Serial.println("[Web] Server started");
+    server.on("/",            handleRoot);
+    server.on("/sensors",     handleSensors);
+    server.on("/wifi",        HTTP_GET,  handleWifiGet);
+    server.on("/scan",        HTTP_GET,  handleScan);
+    server.on("/set_wifi",    HTTP_POST, handleSetWifi);
+    server.on("/prov_status",  HTTP_GET,  handleProvStatus);
+    server.on("/provision",    HTTP_POST, handleProvision);
+    server.on("/device_info", HTTP_GET,  handleDeviceInfo);
+    server.on("/set_token",   HTTP_POST, handleSetToken);
+    server.on("/set_thresh",             handleSetThresh);
+    server.on("/get_thresh",  HTTP_GET,  handleGetThresh);
+
+    loadThresholdsFromNVS(); // Load saved thresholds on boot
+    server.begin();
+    Serial.println("[Web] Server started");
 }
 
-void webServerHandle() { server.handleClient(); }
-
-
+void webServerHandle() {
+    server.handleClient();
+}
