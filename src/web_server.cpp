@@ -59,10 +59,20 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
       .step-header { flex-direction: row; align-items: center; gap: 10px; }
       button, input { font-size: 1em; }
     }
+    #popup-msg {
+      background: #222;
+      color: #fff;
+      border-bottom: 2px solid #00d2ff;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    #popup-msg.success { background: #1a3d1a; color: #2ecc71; border-bottom: 2px solid #2ecc71; }
+    #popup-msg.error { background: #3d1a1a; color: #e74c3c; border-bottom: 2px solid #e74c3c; }
+    #popup-msg.info { background: #1a2a3d; color: #3498db; border-bottom: 2px solid #3498db; }
   </style>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" />
 </head>
 <body>
+<div id="popup-msg" style="position:fixed;top:-60px;left:0;width:100%;z-index:9999;text-align:center;transition:top 0.4s cubic-bezier(.4,2,.6,1);padding:16px 0;font-size:1.1rem;font-weight:bold;"></div>
   <!-- AP Title -->
   <h1>Web AP: ESP32 Device Setup</h1>
   
@@ -127,10 +137,52 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
     </div>
   </div>
 
+  <!-- Thresholds -->
+  <div class="step" id="step-thresh">
+    <div class="step-header">
+      <div class="step-num">⚙</div>
+      <div class="step-title">Alert Thresholds</div>
+    </div>
+    <div class="input-row">
+      <div>
+        <label>Max Temp (°C)</label>
+        <input type="number" id="thresh-temp" step="0.5" min="-40" max="125" placeholder="30">
+      </div>
+      <div>
+        <label>Max Humidity (%)</label>
+        <input type="number" id="thresh-hum" step="1" min="0" max="100" placeholder="80">
+      </div>
+    </div>
+    <button class="thresh" onclick="saveThresholds()">💾 Save Thresholds</button>
+    <div id="thresh-msg"></div>
+  </div>
+
 
 
 
 <script>
+function loadThresholds() {
+  fetch('/get_thresh')
+    .then(r => r.json())
+    .then(th => {
+      document.getElementById('thresh-temp').value = th.temp;
+      document.getElementById('thresh-hum').value = th.hum;
+    });
+}
+
+function saveThresholds() {
+  const temp = parseFloat(document.getElementById("thresh-temp").value);
+  const hum = parseFloat(document.getElementById("thresh-hum").value);
+  if (isNaN(temp) || isNaN(hum)) {
+    showMsg("Enter valid threshold values", "error");
+    return;
+  }
+  showMsg("Saving thresholds...", "info");
+  fetch("/set_thresh?temp=" + temp + "&hum=" + hum)
+    .then(r => r.text())
+    .then(() => showMsg("✓ Thresholds saved!", "success"))
+    .catch(() => showMsg("Failed to save", "error"));
+}
 function registerDevice() {
   const btn = document.getElementById('register-btn');
   btn.disabled = true;
@@ -203,13 +255,25 @@ function pollSensors() {
     document.getElementById('hum').textContent = d.hum !== undefined ? d.hum.toFixed(1) : '–';
   });
 }
+// function showMsg(txt, type) {
+//   const el = document.getElementById('prov-msg');
+//   el.textContent = txt;
+//   el.className = type || '';
+//   if (type === 'success') setTimeout(() => { el.textContent = ''; el.className = ''; }, 5000);
+// }
 function showMsg(txt, type) {
-  const el = document.getElementById('prov-msg');
+  const el = document.getElementById('popup-msg');
   el.textContent = txt;
   el.className = type || '';
-  if (type === 'success') setTimeout(() => { el.textContent = ''; el.className = ''; }, 5000);
+  el.style.top = '0';
+  clearTimeout(el._hideTimer);
+  el._hideTimer = setTimeout(() => {
+    el.style.top = '-60px';
+    el.className = '';
+  }, 5000);
 }
 updateStatus();
+loadThresholds();
 pollSensors();
 setInterval(pollSensors, 3000);
 setInterval(updateStatus, 5000);
@@ -352,6 +416,49 @@ static void handleSensors() {
   server.send(200, "application/json", buf);
 }
 
+// --- Thresholds persistence ---
+static float thresholdTemp = 30.0f;
+static float thresholdHum = 80.0f;
+
+static void loadThresholdsFromNVS() {
+  Preferences prefs;
+  prefs.begin("thresh", true);
+  thresholdTemp = prefs.getFloat("temp", 30.0f);
+  thresholdHum = prefs.getFloat("hum", 80.0f);
+  prefs.end();
+}
+
+static void saveThresholdsToNVS(float temp, float hum) {
+  Preferences prefs;
+  prefs.begin("thresh", false);
+  prefs.putFloat("temp", temp);
+  prefs.putFloat("hum", hum);
+  prefs.end();
+}
+
+static void handleSetThresh() {
+  if (!server.hasArg("temp") || !server.hasArg("hum")) {
+    server.send(400, "text/plain", "Missing temp/hum");
+    return;
+  }
+  float temp = server.arg("temp").toFloat();
+  float hum = server.arg("hum").toFloat();
+  if (isnan(temp) || isnan(hum)) {
+    server.send(400, "text/plain", "Invalid values");
+    return;
+  }
+  thresholdTemp = temp;
+  thresholdHum = hum;
+  saveThresholdsToNVS(temp, hum);
+  server.send(200, "text/plain", "ok");
+}
+
+static void handleGetThresh() {
+  char buf[64];
+  snprintf(buf, sizeof(buf), "{\"temp\":%.2f,\"hum\":%.2f}", thresholdTemp, thresholdHum);
+  server.send(200, "application/json", buf);
+}
+
 // Initialize web server and define endpoints
 void webServerInit() {
   server.on("/", handleRoot);
@@ -363,6 +470,10 @@ void webServerInit() {
   server.on("/device_info", HTTP_GET, handleDeviceInfo);
   server.on("/set_token", HTTP_POST, handleSetToken);
   server.on("/set_qr_data", HTTP_POST, handleSetQrData);
+  server.on("/set_qr_data", HTTP_POST, handleSetQrData);
+  server.on("/set_thresh", HTTP_GET, handleSetThresh);
+  server.on("/get_thresh", HTTP_GET, handleGetThresh);
+  loadThresholdsFromNVS();
   server.begin();
   Serial.println("[Web] Server started");
 }
