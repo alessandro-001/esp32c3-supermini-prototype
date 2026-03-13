@@ -11,7 +11,7 @@
 #include "provisioning.h"
 #include "mqtt.h"
 
-WebServer server(80);
+WebServer server(80); // HTTP server on port 80
 
 //* Wi-Fi Configuration Implementation + Web Server Endpoints + UI
 
@@ -161,6 +161,8 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
 
 
 <script>
+
+//? JavaScript for handling UI interactions, AJAX calls to ESP32 endpoints, and dynamic updates
 function loadThresholds() {
   fetch('/get_thresh')
     .then(r => r.json())
@@ -170,6 +172,7 @@ function loadThresholds() {
     });
 }
 
+//? Save thresholds to ESP32 via POST request
 function saveThresholds() {
   const temp = parseFloat(document.getElementById("thresh-temp").value);
   const hum = parseFloat(document.getElementById("thresh-hum").value);
@@ -183,6 +186,7 @@ function saveThresholds() {
     .then(() => showMsg("✓ Thresholds saved!", "success"))
     .catch(() => showMsg("Failed to save", "error"));
 }
+//? Handle device registration (provisioning) when user clicks "Register Device" button
 function registerDevice() {
   const btn = document.getElementById('register-btn');
   btn.disabled = true;
@@ -206,6 +210,8 @@ function registerDevice() {
       btn.disabled = false;
     });
 }
+  
+//? Scan for Wi-Fi networks and display results
 function scanWifi() {
   const nets = document.getElementById('networks');
   nets.innerHTML = 'Scanning...';
@@ -213,12 +219,16 @@ function scanWifi() {
     nets.innerHTML = list.length ? list.map(n => `<div class='net' onclick='selectNet("${n.ssid.replace(/'/g, "\\'").replace(/"/g, '\\"')}",${n.secure})'>${n.secure ? "🔒" : "🔓"} ${n.ssid} (${n.rssi} dBm)</div>`).join('') : 'No networks found';
   }).catch(() => nets.innerHTML = 'Scan failed');
 }
+
+//? When user selects a Wi-Fi network, show the form to enter password (if needed)
 function selectNet(ssid, secure) {
   document.getElementById('wifi-ssid').value = ssid;
   document.getElementById('wifi-pass').value = '';
   document.getElementById('wifi-form').classList.remove('hidden');
   if (secure) document.getElementById('wifi-pass').focus();
 }
+
+//? Save Wi-Fi credentials and attempt connection
 function saveWifi() {
   const ssid = document.getElementById('wifi-ssid').value.trim();
   const pass = document.getElementById('wifi-pass').value;
@@ -237,6 +247,8 @@ function saveWifi() {
     updateStatus();
   }).catch(() => showMsg('Connection failed', 'error'));
 }
+
+//? Periodically update Wi-Fi connection status and device info
 function updateStatus() {
   fetch('/wifi').then(r => r.json()).then(w => {
     document.getElementById('curr-wifi').textContent = w.ssid || '–';
@@ -249,18 +261,16 @@ function updateStatus() {
     document.getElementById('device-name').textContent = info.device_name || '–';
   }).catch(() => {});
 }
+
+//? Fetch live sensor data every few seconds and update the UI
 function pollSensors() {
   fetch('/sensors').then(r => r.json()).then(d => {
     document.getElementById('temp').textContent = d.temp !== undefined ? d.temp.toFixed(1) : '–';
     document.getElementById('hum').textContent = d.hum !== undefined ? d.hum.toFixed(1) : '–';
   });
 }
-// function showMsg(txt, type) {
-//   const el = document.getElementById('prov-msg');
-//   el.textContent = txt;
-//   el.className = type || '';
-//   if (type === 'success') setTimeout(() => { el.textContent = ''; el.className = ''; }, 5000);
-// }
+
+//? Utility function to show temporary messages to the user
 function showMsg(txt, type) {
   const el = document.getElementById('popup-msg');
   el.textContent = txt;
@@ -272,11 +282,12 @@ function showMsg(txt, type) {
     el.className = '';
   }, 5000);
 }
-updateStatus();
-loadThresholds();
-pollSensors();
-setInterval(pollSensors, 3000);
-setInterval(updateStatus, 5000);
+
+updateStatus();                   // Initial status update
+loadThresholds();                 // Load saved thresholds into form
+pollSensors();                    // Start polling sensor data
+setInterval(pollSensors, 3000);   // Update sensor data every 3 seconds
+setInterval(updateStatus, 5000);  // Update connection status every 5 seconds
 </script>
 </body>
 </html>
@@ -286,6 +297,12 @@ setInterval(updateStatus, 5000);
 static String qrDeviceKey = "";
 static String qrDeviceSecret = "";
 static String qrDeviceName = "";
+float threshTemp = 30.0;
+float threshHum = 80.0;
+extern float sensorTemp;
+extern float sensorHum;
+extern bool alertTemp;
+extern bool alertHum;
 
 // Generate a unique device name from MAC address
 String getDeviceName() {
@@ -321,6 +338,7 @@ static String escapeJson(const String& input) {
   return output;
 }
 
+// Get current Wi-Fi status and SSID
 static void handleWifiGet() {
   char buf[160];
   snprintf(buf, sizeof(buf), "{\"ssid\":\"%s\",\"connected\":%s}",
@@ -329,8 +347,10 @@ static void handleWifiGet() {
   server.send(200, "application/json", buf);
 }
 
+// Scan for Wi-Fi networks and return JSON list
 static void handleScan() { server.send(200, "application/json", wifiScanNetworks()); }
 
+// Handle Wi-Fi configuration POST request
 static void handleSetWifi() {
   if (!server.hasArg("ssid") || !server.hasArg("pass")) {
     server.send(400, "text/plain", "Missing ssid/pass");
@@ -346,6 +366,7 @@ static void handleSetWifi() {
   server.send(200, "text/plain", ok ? "Connected to " + ssid : "Connection failed");
 }
 
+// Get device information (ID and name) as JSON
 static void handleDeviceInfo() {
   char buf[128];
   String devMac = getDeviceMacString();
@@ -355,6 +376,7 @@ static void handleDeviceInfo() {
   server.send(200, "application/json", buf);
 }
 
+// Handle QR provisioning data sent from the mobile app
 static void handleSetQrData() {
   if (!server.hasArg("plain")) {
     server.send(400, "application/json", "{\"status\":\"error\"}");
@@ -375,6 +397,7 @@ static void handleSetQrData() {
   server.send(200, "application/json", "{\"status\":\"ok\"}");
 }
 
+// Handle provisioning request: send device info to ThingsBoard and get token
 static void handleProvision() {
   if (!WiFi.isConnected()) {
     server.send(200, "application/json", "{\"status\":\"error\",\"message\":\"WiFi not connected\"}");
@@ -389,6 +412,7 @@ static void handleProvision() {
   }
 }
 
+// Handle token update from web interface (for manual token entry)
 static void handleSetToken() {
   if (!server.hasArg("token")) {
     server.send(400, "application/json", "{\"status\":\"error\"}");
@@ -437,20 +461,27 @@ static void saveThresholdsToNVS(float temp, float hum) {
 }
 
 static void handleSetThresh() {
-  if (!server.hasArg("temp") || !server.hasArg("hum")) {
-    server.send(400, "text/plain", "Missing temp/hum");
-    return;
-  }
-  float temp = server.arg("temp").toFloat();
-  float hum = server.arg("hum").toFloat();
-  if (isnan(temp) || isnan(hum)) {
-    server.send(400, "text/plain", "Invalid values");
-    return;
-  }
-  thresholdTemp = temp;
-  thresholdHum = hum;
-  saveThresholdsToNVS(temp, hum);
-  server.send(200, "text/plain", "ok");
+  Serial.println("[DEBUG] handleSetThresh called"); // Debug print
+
+  if (server.hasArg("temp")) threshTemp = server.arg("temp").toFloat();
+  if (server.hasArg("hum"))  threshHum  = server.arg("hum").toFloat();
+
+  Preferences prefs;
+  prefs.begin("thresholds", false);
+  prefs.putFloat("temp", threshTemp);
+  prefs.putFloat("hum", threshHum);
+  prefs.end();
+
+  Serial.printf("[Thresh] Saved - Temp: %.1f, Hum: %.1f\n", threshTemp, threshHum);
+
+  // Update alerts immediately
+  alertTemp = (sensorTemp > threshTemp);
+  alertHum  = (sensorHum > threshHum);
+
+  // Publish new thresholds to ThingsBoard (if you have this function)
+  mqttPublishAttributes();
+
+  server.send(200, "text/plain", "OK");
 }
 
 static void handleGetThresh() {
@@ -459,7 +490,7 @@ static void handleGetThresh() {
   server.send(200, "application/json", buf);
 }
 
-// Initialize web server and define endpoints
+//* Initialize web server and define HTTP endpoints
 void webServerInit() {
   server.on("/", handleRoot);
   server.on("/sensors", handleSensors);
@@ -471,7 +502,7 @@ void webServerInit() {
   server.on("/set_token", HTTP_POST, handleSetToken);
   server.on("/set_qr_data", HTTP_POST, handleSetQrData);
   server.on("/set_qr_data", HTTP_POST, handleSetQrData);
-  server.on("/set_thresh", HTTP_GET, handleSetThresh);
+  server.on("/set_thresh", handleSetThresh);
   server.on("/get_thresh", HTTP_GET, handleGetThresh);
   loadThresholdsFromNVS();
   server.begin();
