@@ -8,6 +8,8 @@
 #include "secrets.h"
 #include "sensors.h"
 #include "wifi_config.h"
+#include "provisioning.h"
+#include "mqtt.h"
 
 WebServer server(80);
 
@@ -79,9 +81,13 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
   <span class="val" id="device-name">–</span>
   </div>
   <div class="row">
-  <span>Status</span>
-  <span id="prov-status">–</span>
+    <span>Status</span>
+    <span id="prov-status">–</span>
   </div>
+  <div class="row">
+    <button id="register-btn" onclick="registerDevice()">Register Device</button>
+  </div>
+  <div id="prov-msg"></div>
   </div>
   
   <!-- Live Data (sensor readings) -->
@@ -122,9 +128,32 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
   </div>
 
 
-  <div id="msg"></div>
+
 
 <script>
+function registerDevice() {
+  const btn = document.getElementById('register-btn');
+  btn.disabled = true;
+  showMsg('Registering device...', 'info');
+  fetch('/provision', { method: 'POST' })
+    .then(r => r.json())
+    .then(res => {
+      if (res.status === 'ok') {
+        showMsg('Device registered! Restarting MQTT...', 'success');
+        document.getElementById('prov-status').textContent = 'Provisioned';
+        // Optionally, trigger MQTT reconnect by reloading page or calling endpoint
+      } else {
+        showMsg(res.message || 'Provisioning failed', 'error');
+        document.getElementById('prov-status').textContent = 'Not provisioned';
+      }
+      btn.disabled = false;
+      updateStatus();
+    })
+    .catch(() => {
+      showMsg('Provisioning failed', 'error');
+      btn.disabled = false;
+    });
+}
 function scanWifi() {
   const nets = document.getElementById('networks');
   nets.innerHTML = 'Scanning...';
@@ -175,7 +204,7 @@ function pollSensors() {
   });
 }
 function showMsg(txt, type) {
-  const el = document.getElementById('msg');
+  const el = document.getElementById('prov-msg');
   el.textContent = txt;
   el.className = type || '';
   if (type === 'success') setTimeout(() => { el.textContent = ''; el.className = ''; }, 5000);
@@ -283,8 +312,17 @@ static void handleSetQrData() {
 }
 
 static void handleProvision() {
-  // Stub: always return error for now
-  server.send(200, "application/json", "{\"status\":\"error\",\"message\":\"Provisioning not implemented\"}");
+  if (!WiFi.isConnected()) {
+    server.send(200, "application/json", "{\"status\":\"error\",\"message\":\"WiFi not connected\"}");
+    return;
+  }
+  String token = provisioningRequest();
+  if (!token.isEmpty()) {
+    mqttSetToken(token);
+    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Provisioning successful\"}");
+  } else {
+    server.send(200, "application/json", "{\"status\":\"error\",\"message\":\"Provisioning failed\"}");
+  }
 }
 
 static void handleSetToken() {

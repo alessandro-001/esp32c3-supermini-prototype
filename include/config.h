@@ -5,7 +5,7 @@
 // ── Access Point ──────────────────────────────────────────────
 #define AP_SSID             "ESP32C3_Hotspot"  //* http://192.168.4.1
 
-// ── Hardware Pins ─────────────────────────────────────────────
+// ── Hardware Pins ESP32C3 ─────────────────────────────────────────────
 #define NEOPIXEL_PIN        3
 #define NUM_LEDS            12
 #define BRIGHTNESS          60  // RGB brightness (0-255)

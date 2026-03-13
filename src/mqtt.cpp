@@ -1,5 +1,5 @@
 #include "mqtt.h"
-#include "sensors/shtc3.cpp"
+#include "sensors/shtc3.h"
 #include "config.h"
 #include "provisioning.h"
 #include <PubSubClient.h>

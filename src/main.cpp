@@ -5,6 +5,8 @@
 #include "wifi_config.h"
 #include "web_server.h"
 #include <WiFi.h>
+#include "provisioning.h"
+#include "mqtt.h"
 
 //* ESP32C3 Smart Monitor Prototype - MAIN *//
 
@@ -41,8 +43,18 @@ void setup() {
   wifiConfigBegin(HOME_SSID, HOME_PASSWORD);
   bool wifiConnected = wifiConfigConnect(10000); // 10 seconds timeout
 
-  Serial.println("\nTemp (C)\tHumidity (%)");
-  Serial.println("─────────────────────────────────────");
+  // Automatic provisioning on boot
+  String token = provisioningInit();
+  if (token.isEmpty() && wifiConnected) {
+    token = provisioningRequest();
+    if (!token.isEmpty()) {
+      mqttInit(token);
+    }
+  } else {
+    mqttInit(token);
+  }
+
+  // Serial output for temp/hum header removed to reduce terminal clutter
 
   webServerInit();
 }
@@ -51,7 +63,7 @@ void loop() {
   uint32_t now = millis();
 
   // ── Sensor read ──────────────────────────────────────────────────────────
-  shtc3Read();
+  shtc3Read(); // No Serial print here; MQTT publish will log data
 
   // ── Web server ───────────────────────────────────────────────────────────
   webServerHandle();
@@ -78,4 +90,21 @@ void loop() {
     }
     ring.show();
   }
+
+  // ── Periodically send MQTT telemetry and attributes ─────────────────────
+  static uint32_t lastMqttPublish = 0;
+  if (now - lastMqttPublish >= 5000) { // every 5 seconds
+    lastMqttPublish = now;
+    if (mqttIsConnected()) {
+      mqttPublish();
+      static bool sentAttributes = false;
+      if (!sentAttributes) {
+        mqttPublishAttributes();
+        sentAttributes = true;
+      }
+    }
+  }
+
+  provisioningHandle();
+  mqttHandle();
 }

@@ -64,8 +64,8 @@ void shtc3Read() {
   if (t > -40 && t < 120 && h >= 0 && h <= 100) {
     sensorTemp = t;
     sensorHum  = h;
-    Serial.print(t, 1); Serial.print(" C\t\t");
-    Serial.print(h, 1); Serial.println(" %");
+    // Serial.print(t, 1); Serial.print(" C\t\t");
+    // Serial.print(h, 1); Serial.println(" %");
   } else {
     Serial.println("SHTC3: bad reading — skipping");
   }
