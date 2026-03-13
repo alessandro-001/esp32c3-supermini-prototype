@@ -14,6 +14,8 @@ static uint32_t       _lastRead = 0;
 float sensorTemp = 0.0f;
 float sensorHum  = 0.0f;
 bool  sensorOK   = false;
+bool  alertTemp  = false;
+bool  alertHum   = false;
 
 // ── I2C scan (debug utility) ──────────────────────────────────────────────────
 static void i2cScan() {
@@ -46,7 +48,7 @@ void shtc3Init() {
   }
 }
 
-void shtc3Read() { //
+void shtc3Read() { 
   if (!sensorOK) return;
 
   uint32_t now = millis();
