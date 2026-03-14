@@ -1,6 +1,7 @@
 #pragma once
 
-// Extern declarations for global variables
+/// ── SHTC3 Temperature & Humidity Sensor ───────────────────────────────────────────
+
 enum { SHTC3_OK = 0, SHTC3_ERROR = -1 };
 
 extern float sensorTemp;

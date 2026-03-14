@@ -1,9 +1,16 @@
 #include "mqtt.h"
 #include "sensors/shtc3.h"
+#include "sensors/ens160.h"
 #include "config.h"
 #include "provisioning.h"
 #include <PubSubClient.h>
 #include <WiFi.h>
+
+// Threshold values defined in web_server.cpp
+extern float threshTemp;
+extern float threshHum;
+extern float threshTvoc;
+extern float threshEco2;
 
 static WiFiClient   wifiClient;
 static PubSubClient mqtt(wifiClient);
@@ -25,11 +32,9 @@ static void mqttConnect() {
 
     String clientId = "ESP32-" + provisioningDeviceId();
     Serial.printf("[MQTT] Connecting as %s...\n", clientId.c_str());
-    
+
     if (mqtt.connect(clientId.c_str(), gToken.c_str(), NULL)) {
         Serial.println("[MQTT] ✅ Connected to ThingsBoard");
-        
-        // Subscribe to attribute updates and RPC
         mqtt.subscribe("v1/devices/me/attributes");
         mqtt.subscribe("v1/devices/me/rpc/request/+");
     } else {
@@ -37,7 +42,6 @@ static void mqttConnect() {
     }
 }
 
-/// Initialise MQTT with a dynamic token from NVS/provisioning
 void mqttInit(const String& token) {
     gToken = token;
     mqtt.setServer(TB_SERVER, TB_PORT);
@@ -45,26 +49,18 @@ void mqttInit(const String& token) {
     mqttConnect();
 }
 
-/// Update token (used after provisioning completes)
 void mqttSetToken(const String& token) {
     if (gToken != token) {
         gToken = token;
-        if (mqtt.connected()) {
-            mqtt.disconnect();
-        }
-        if (!gToken.isEmpty()) {
-            mqttConnect();
-        }
+        if (mqtt.connected()) mqtt.disconnect();
+        if (!gToken.isEmpty()) mqttConnect();
     }
 }
 
-/// Call mqtt.loop() to maintain connection and handle incoming messages
 void mqttHandle() {
     if (gToken.isEmpty()) return;
-    
     mqtt.loop();
-    
-    // Non-blocking reconnect
+
     static unsigned long lastReconnect = 0;
     if (!mqtt.connected() && millis() - lastReconnect > 5000) {
         lastReconnect = millis();
@@ -72,22 +68,39 @@ void mqttHandle() {
     }
 }
 
-/// Check if MQTT is connected
 bool mqttIsConnected() {
     return mqtt.connected();
 }
 
-/// Publish sensor data and alert status to ThingsBoard
+/// Publish sensor telemetry to ThingsBoard
+/// Includes: temperature, humidity, alerts, AQI, TVOC, eCO2
 void mqttPublish() {
     if (!mqtt.connected()) return;
 
-    char payload[128];
+    char payload[256];
     snprintf(payload, sizeof(payload),
-        "{\"temperature\":%.2f,\"humidity\":%.2f,\"alert_temp\":%s,\"alert_hum\":%s}",
-        sensorTemp, sensorHum,
+        "{"
+        "\"temperature\":%.2f,"
+        "\"humidity\":%.2f,"
+        "\"alert_temp\":%s,"
+        "\"alert_hum\":%s,"
+        "\"aqi\":%d,"
+        "\"aqi_label\":\"%s\","
+        "\"tvoc\":%d,"
+        "\"eco2\":%d,"
+        "\"air_quality_status\":\"%s\""
+        "}",
+        sensorTemp,
+        sensorHum,
         alertTemp ? "true" : "false",
-        alertHum  ? "true" : "false"
+        alertHum  ? "true" : "false",
+        ens160AQI,
+        ens160AQILabel(ens160AQI),
+        ens160TVOC,
+        ens160eCO2,
+        ens160Status.c_str()
     );
+
     mqtt.publish("v1/devices/me/telemetry", payload);
     Serial.printf("[MQTT] Published: %s\n", payload);
 }
@@ -96,24 +109,37 @@ void mqttPublish() {
 void mqttPublishAttributes() {
     if (!mqtt.connected()) return;
 
-    char payload[256];
+    char payload[384];
     snprintf(payload, sizeof(payload),
-        "{\"mac\":\"%s\",\"ip\":\"%s\",\"rssi\":%d,\"firmware\":\"%s\"}",
+        "{"
+        "\"mac\":\"%s\","
+        "\"ip\":\"%s\","
+        "\"rssi\":%d,"
+        "\"firmware\":\"%s\","
+        "\"highTempThreshold\":%.1f,"
+        "\"highHumThreshold\":%.1f,"
+        "\"highTvocThreshold\":%.0f,"
+        "\"highEco2Threshold\":%.0f"
+        "}",
         provisioningDeviceId().c_str(),
         WiFi.localIP().toString().c_str(),
         WiFi.RSSI(),
-        FIRMWARE_VERSION
+        FIRMWARE_VERSION,
+        threshTemp,
+        threshHum,
+        threshTvoc,
+        threshEco2
     );
+
     mqtt.publish("v1/devices/me/attributes", payload);
     Serial.printf("[MQTT] Attributes: %s\n", payload);
 }
 
-/// Cleanly disconnect from MQTT broker
 void mqttDisconnect() {
     if (mqtt.connected()) {
         Serial.println("[MQTT] Disconnecting...");
         mqtt.disconnect();
-        delay(100);  // Allow disconnect to complete
+        delay(100);
         Serial.println("[MQTT] ✓ Disconnected");
     }
 }

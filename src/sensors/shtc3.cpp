@@ -19,54 +19,53 @@ bool  alertHum   = false;
 
 // ── I2C scan (debug utility) ──────────────────────────────────────────────────
 static void i2cScan() {
-  Serial.println("\n[I2C Scanner] Scanning...");
-  uint8_t found = 0;
-  for (uint8_t addr = 1; addr < 127; addr++) {
-    Wire.beginTransmission(addr);
-    if (Wire.endTransmission() == 0) {
-      Serial.print("  Found device at 0x");
-      Serial.println(addr, HEX);
-      found++;
+    Serial.println("\n[I2C Scanner] Scanning...");
+    uint8_t found = 0;
+    for (uint8_t addr = 1; addr < 127; addr++) {
+        Wire.beginTransmission(addr);
+        if (Wire.endTransmission() == 0) {
+            Serial.printf("  Found device at 0x%02X\n", addr);
+            found++;
+        }
     }
-  }
-  if (found == 0) Serial.println("  No I2C devices found! Check wiring.");
+    if (found == 0) Serial.println("  No I2C devices found! Check wiring.");
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
 void shtc3Init() {
-  Wire.begin(I2C_SDA, I2C_SCL);
-  Serial.println("✓ I2C on SDA=GPIO8, SCL=GPIO9");
+    // Always init I2C bus — even if sensor is not present
+    Wire.begin(I2C_SDA, I2C_SCL);
+    Serial.println("✓ I2C on SDA=GPIO8, SCL=GPIO9");
 
-  i2cScan();
+    i2cScan();
 
-  Serial.print("  Connecting to SHTC3... ");
-  if (_shtc3.begin()) {
-    sensorOK = true;
-    Serial.println("OK! (0x70)");
-  } else {
-    Serial.println("FAILED");
-  }
+    Serial.print("  Connecting to SHTC3... ");
+    if (_shtc3.begin()) {
+        sensorOK = true;
+        Serial.println("OK! (0x70)");
+    } else {
+        sensorOK = false;  // not fatal — ENS160 can still work
+        Serial.println("FAILED — sensor not connected");
+    }
 }
 
-void shtc3Read() { 
-  if (!sensorOK) return;
+void shtc3Read() {
+    if (!sensorOK) return;
 
-  uint32_t now = millis();
-  if (now - _lastRead < SENSOR_INTERVAL) return;
-  _lastRead = now;
+    uint32_t now = millis();
+    if (now - _lastRead < SENSOR_INTERVAL) return;
+    _lastRead = now;
 
-  sensors_event_t temp, humidity;
-  _shtc3.getEvent(&humidity, &temp);
+    sensors_event_t temp, humidity;
+    _shtc3.getEvent(&humidity, &temp);
 
-  float t = temp.temperature;
-  float h = humidity.relative_humidity;
+    float t = temp.temperature;
+    float h = humidity.relative_humidity;
 
-  if (t > -40 && t < 120 && h >= 0 && h <= 100) {
-    sensorTemp = t;
-    sensorHum  = h;
-    // Serial.print(t, 1); Serial.print(" C\t\t");
-    // Serial.print(h, 1); Serial.println(" %");
-  } else {
-    Serial.println("SHTC3: bad reading — skipping");
-  }
+    if (t > -40 && t < 120 && h >= 0 && h <= 100) {
+        sensorTemp = t;
+        sensorHum  = h;
+    } else {
+        Serial.println("SHTC3: bad reading — skipping");
+    }
 }
