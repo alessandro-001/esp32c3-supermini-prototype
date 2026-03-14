@@ -73,7 +73,10 @@ void wifiConfigBegin(const char* defaultSsid, const char* defaultPass) {
 /// Save new credentials to NVS (local storage)
 bool wifiConfigSave(const String& ssid, const String& pass) {
   if (ssid.length() == 0) return false;
-  if (pass.length() > 0 && pass.length() < 8) return false;
+  if (pass.length() > 0 && pass.length() < 8) {
+      Serial.println("[WiFi] Password too short (min 8 chars for WPA)");
+      return false;
+}
 
   gSsid = ssid; // Update global variables
   gPass = pass; // Note: pass can be empty for open networks

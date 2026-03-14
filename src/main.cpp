@@ -99,11 +99,25 @@ void loop() {
 
     // ── MQTT telemetry publish every 5s ──────────────────────────────────────
     static uint32_t lastMqttPublish = 0;
+    static bool     sentAttributes  = false;
+    static bool     wasConnected    = false;
+
+    bool isConnected = mqttIsConnected();
+
+    // Detect fresh connection (including reconnects) → re-send attributes
+    if (!wasConnected && isConnected) {
+        sentAttributes = false;
+    }
+    wasConnected = isConnected;
+
     if (now - lastMqttPublish >= 5000) {
         lastMqttPublish = now;
-        if (mqttIsConnected()) {
+        if (isConnected) {
             mqttPublish();
-            mqttPublishAttributes();
+            if (!sentAttributes) {
+                mqttPublishAttributes();
+                sentAttributes = true;
+            }
         }
     }
 

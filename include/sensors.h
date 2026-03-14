@@ -4,6 +4,8 @@
 extern float sensorTemp;        // Current temperature reading (°C)
 extern float sensorHum;         // Current humidity reading (%)
 extern bool  sensorOK;          // True if at least one sensor initialised OK
+extern bool alertTemp;  // True if temperature exceeds threshold
+extern bool alertHum;   // True if humidity exceeds threshold
 
 // ── SHTC3 — Temperature & Humidity ───────────────────────────────────────────
 void shtc3Init();               // Initialise I2C and SHTC3 sensor
