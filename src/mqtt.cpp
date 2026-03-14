@@ -1,5 +1,4 @@
 #include "mqtt.h"
-//#include "sensors/shtc3.h"
 #include "sensors.h"
 #include "sensors/ens160.h"
 #include "config.h"
