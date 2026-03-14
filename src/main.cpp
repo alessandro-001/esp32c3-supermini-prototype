@@ -37,10 +37,12 @@ void setup() {
     shtc3Init();   // I2C — temp & humidity (GPIO8/9)
     ens160Init();  // SPI — air quality (GPIO4/5/6/7)
 
-    // Start AP (always available for configuration)
+        // Start AP (always available for configuration)
     WiFi.mode(WIFI_AP_STA);
-    WiFi.softAP(AP_SSID, AP_PASSWORD, 11);
-    Serial.printf("[AP] Started: %s @ %s\n", AP_SSID, WiFi.softAPIP().toString().c_str());
+    String apSsid = String(AP_SSID) + "_" + WiFi.macAddress().substring(12);
+    apSsid.replace(":", "");
+    WiFi.softAP(apSsid.c_str(), AP_PASSWORD, 11);
+    Serial.printf("[AP] Started: %s @ %s\n", apSsid.c_str(), WiFi.softAPIP().toString().c_str());
 
     // Load and connect to saved WiFi
     wifiConfigBegin(HOME_SSID, HOME_PASSWORD);
