@@ -74,7 +74,8 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
 </head>
 <body>
 <div id="popup-msg" style="position:fixed;top:-60px;left:0;width:100%;z-index:9999;text-align:center;transition:top 0.4s cubic-bezier(.4,2,.6,1);padding:16px 0;font-size:1.1rem;font-weight:bold;"></div>
-  <!-- AP Title -->
+ 
+<!-- AP Title -->
   <h1>Web AP: ESP32 Device Setup</h1>
   
   <!-- Device Info -->
@@ -186,6 +187,8 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
   </div>
 
 <script>
+let selectedSecure = false; // track if selected network is secure (shows password field)
+
 function loadThresholds() {
   fetch('/get_thresh')
     .then(r => r.json())
@@ -263,6 +266,7 @@ function scanWifi() {
 }
 
 function selectNet(ssid, secure) {
+  selectedSecure = secure;
   document.getElementById('wifi-ssid').value = ssid;
   document.getElementById('wifi-pass').value = '';
   document.getElementById('wifi-form').classList.remove('hidden');
@@ -279,7 +283,7 @@ function saveWifi() {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: 'ssid=' + encodeURIComponent(ssid) + 
           '&pass=' + encodeURIComponent(pass) + 
-          '&secure=' + (secure ? 'true' : 'false')
+          '&secure=' + (selectedSecure ? 'true' : 'false')
   }).then(r => r.text()).then(t => {
     showMsg(t, t.includes('Connected') ? 'success' : 'error');
     if (t.includes('Connected')) {
