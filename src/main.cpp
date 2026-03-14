@@ -2,7 +2,6 @@
 #include <Adafruit_NeoPixel.h>
 #include "config.h"
 #include "sensors.h"
-#include "sensors/ens160.h"
 #include "wifi_config.h"
 #include "web_server.h"
 #include <WiFi.h>
@@ -24,6 +23,9 @@ void setup() {
     delay(1500);
     Serial.println("\n=== BOSS FARM Smart Monitor ===");
 
+    // LDR init
+    ldrInit();
+
     // NeoPixel init
     ring.begin();
     ring.setBrightness(BRIGHTNESS);
@@ -37,7 +39,7 @@ void setup() {
 
     // Start AP (always available for configuration)
     WiFi.mode(WIFI_AP_STA);
-    WiFi.softAP(AP_SSID, AP_PASSWORD, 6);
+    WiFi.softAP(AP_SSID, AP_PASSWORD, 11);
     Serial.printf("[AP] Started: %s @ %s\n", AP_SSID, WiFi.softAPIP().toString().c_str());
 
     // Load and connect to saved WiFi
@@ -64,6 +66,9 @@ void loop() {
     // ── Sensor reads ─────────────────────────────────────────────────────────
     shtc3Read();
     ens160Read();
+
+    // ── LDR read (light detection) ─────────────────────────────────────────
+    ldrRead();
 
     // ── Sensor warnings (printed once per session) ────────────────────────────
     static bool warnedSHTC3  = false;

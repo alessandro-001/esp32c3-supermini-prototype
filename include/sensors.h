@@ -15,6 +15,9 @@ extern uint16_t ens160eCO2;     // Equivalent CO2 in ppm
 extern bool     ens160OK;       // True if ENS160 initialised OK
 extern String   ens160Status;   // Human-readable status string
 
+//! ── LDR shared state ────────────────────────────────────────────────────────────────
+extern bool ldrLightOn;     // true if light is detected above threshold
+
 //! ── SHTC3 API ────────────────────────────────────────────────────────────────
 void        shtc3Init();
 void        shtc3Read();
@@ -24,3 +27,8 @@ void        ens160Init();
 void        ens160Read();
 void        ens160SetCompensation(float temp, float hum);
 const char* ens160AQILabel(uint8_t aqi);
+
+
+//! ── LDR API ──────────────────────────────────────────────────────────────────
+void        ldrInit();
+void        ldrRead();

@@ -21,6 +21,10 @@
 #define ENS160_CS_PIN       7   // GPIO7  (CS  / SS)
 // #define ENS160_INT_PIN   10  // GPIO10 (INT — optional, not used)
 
+// LDR — Light Detection
+#define LDR_PIN         2     // GPIO2
+#define LDR_THRESHOLD   2900  // above = light ON, adjust to environment
+
 //! ── Sensor & LED Timing ─────────────────────────────────────────────────────────────────────────────────────
 #define SENSOR_INTERVAL     2000
 #define LED_INTERVAL        20

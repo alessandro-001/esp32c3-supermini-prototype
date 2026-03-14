@@ -1,6 +1,5 @@
 #include "mqtt.h"
 #include "sensors.h"
-#include "sensors/ens160.h"
 #include "config.h"
 #include "provisioning.h"
 #include <PubSubClient.h>
@@ -88,7 +87,8 @@ void mqttPublish() {
         "\"aqi_label\":\"%s\","
         "\"tvoc\":%d,"
         "\"eco2\":%d,"
-        "\"air_quality_status\":\"%s\""
+        "\"air_quality_status\":\"%s\","
+        "\"light_on\":%s"
         "}",
         sensorTemp,
         sensorHum,
@@ -98,7 +98,8 @@ void mqttPublish() {
         ens160AQILabel(ens160AQI),
         ens160TVOC,
         ens160eCO2,
-        ens160Status.c_str()
+        ens160Status.c_str(),
+        ldrLightOn ? "true" : "false"
     );
 
     mqtt.publish("v1/devices/me/telemetry", payload);

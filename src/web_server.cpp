@@ -6,9 +6,8 @@
 #include <WebServer.h>
 #include "config.h"
 #include "secrets.h"
-#include "sensors.h"
+#include "sensors.h"        // covers SHTC3, ENS160 and LDR — no need for direct sensor includes
 #include "wifi_config.h"
-#include "sensors/ens160.h"
 #include "provisioning.h"
 #include "mqtt.h"
 
@@ -74,10 +73,10 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
 </head>
 <body>
 <div id="popup-msg" style="position:fixed;top:-60px;left:0;width:100%;z-index:9999;text-align:center;transition:top 0.4s cubic-bezier(.4,2,.6,1);padding:16px 0;font-size:1.1rem;font-weight:bold;"></div>
- 
+
 <!-- AP Title -->
   <h1>Web AP: ESP32 Device Setup</h1>
-  
+
   <!-- Device Info -->
   <div class="step" id="step1">
   <div class="step-header">
@@ -101,7 +100,7 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
   </div>
   <div id="prov-msg"></div>
   </div>
-  
+
   <!-- Live Data (sensor readings) -->
   <div class="step" id="step4">
     <div class="step-header"><span style="font-size:28px;">📡</span><div class="step-title">Live Sensor Data</div></div>
@@ -112,6 +111,10 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
     <div class="row">
       <span>💧 Humidity</span>
       <span><span class="val" id="hum">–</span> %</span>
+    </div>
+    <div class="row">
+      <span>💡 Light</span>
+      <span class="val" id="light">–</span>
     </div>
   </div>
 
@@ -135,6 +138,8 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
       <span id="aqi-status" style="font-size:0.9rem;color:#aaa;">–</span>
     </div>
   </div>
+
+  <!-- WiFi Connection -->
   <div class="step" id="step2">
     <div class="step-header"><span style="font-size:28px;">📶</span><div class="step-title">WiFi Connection</div></div>
     <div class="row">
@@ -208,7 +213,7 @@ function checkProvStatus() {
       const registerRow = document.getElementById('register-row');
       if (res.provisioned) {
         statusEl.innerHTML = '<span style="color:#2ecc71;font-weight:bold;">Active ✅</span>';
-        registerRow.style.display = 'none'; // hide button if already registered
+        registerRow.style.display = 'none';
       } else {
         statusEl.innerHTML = '<span style="color:#e74c3c;font-weight:bold;">Not registered ❌</span>';
         registerRow.style.display = '';
@@ -244,7 +249,7 @@ function registerDevice() {
     .then(res => {
       if (res.status === 'ok') {
         showMsg('Device registered! Connecting to ThingsBoard...', 'success');
-        checkProvStatus(); // refresh status → shows Active ✅ and hides button
+        checkProvStatus();
       } else {
         showMsg(res.message || 'Provisioning failed', 'error');
         btn.disabled = false;
@@ -256,7 +261,7 @@ function registerDevice() {
       btn.disabled = false;
     });
 }
-  
+
 function scanWifi() {
   const nets = document.getElementById('networks');
   nets.innerHTML = 'Scanning...';
@@ -281,8 +286,8 @@ function saveWifi() {
   fetch('/set_wifi', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: 'ssid=' + encodeURIComponent(ssid) + 
-          '&pass=' + encodeURIComponent(pass) + 
+    body: 'ssid=' + encodeURIComponent(ssid) +
+          '&pass=' + encodeURIComponent(pass) +
           '&secure=' + (selectedSecure ? 'true' : 'false')
   }).then(r => r.text()).then(t => {
     showMsg(t, t.includes('Connected') ? 'success' : 'error');
@@ -315,6 +320,11 @@ function pollSensors() {
   fetch('/sensors').then(r => r.json()).then(d => {
     document.getElementById('temp').textContent = d.temp !== undefined ? d.temp.toFixed(1) : '–';
     document.getElementById('hum').textContent  = d.hum  !== undefined ? d.hum.toFixed(1)  : '–';
+    // ── LDR light status ──────────────────────────────────────────────────────
+    const lightEl = document.getElementById('light');
+    lightEl.textContent = d.light_on !== undefined ? (d.light_on ? 'ON' : 'OFF') : '–';
+    lightEl.style.color = d.light_on ? '#f1c40f' : '#aaa';
+    // ── Air quality ───────────────────────────────────────────────────────────
     if (d.aqi) {
       const aqiEl = document.getElementById('aqi');
       aqiEl.textContent = d.aqi;
@@ -386,7 +396,6 @@ static String getDeviceName() {
     uint8_t mac[6];
     WiFi.macAddress(mac);
     char name[32];
-    // Use all 6 MAC bytes to match ThingsBoard device name format: ESP32-8856A674FCE0
     snprintf(name, sizeof(name), "ESP32-%02X%02X%02X%02X%02X%02X",
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     return String(name);
@@ -429,7 +438,6 @@ static void saveThresholdsToNVS(float temp, float hum, float tvoc, float eco2) {
 
 // ── Captive Portal — makes iPhone/Android connect without internet ────────────
 static void handleCaptivePortal() {
-    // iOS checks this URL to detect internet — we redirect to our page
     server.sendHeader("Location", "http://192.168.4.1/", true);
     server.send(302, "text/plain", "");
 }
@@ -523,7 +531,7 @@ static void handleSetToken() {
 }
 
 static void handleSensors() {
-    char buf[192];
+    char buf[220];  // bumped from 192 to fit light_on field
     snprintf(buf, sizeof(buf),
         "{"
         "\"temp\":%.1f,"
@@ -532,7 +540,8 @@ static void handleSensors() {
         "\"aqi_label\":\"%s\","
         "\"tvoc\":%d,"
         "\"eco2\":%d,"
-        "\"aqi_status\":\"%s\""
+        "\"aqi_status\":\"%s\","
+        "\"light_on\":%s"
         "}",
         sensorTemp,
         sensorHum,
@@ -540,7 +549,8 @@ static void handleSensors() {
         ens160AQILabel(ens160AQI),
         ens160TVOC,
         ens160eCO2,
-        ens160Status.c_str()
+        ens160Status.c_str(),
+        ldrLightOn ? "true" : "false"
     );
     server.send(200, "application/json", buf);
 }
@@ -588,18 +598,19 @@ void webServerInit() {
     server.on("/generate_204",              handleCaptivePortal);
     server.on("/gen_204",                   handleCaptivePortal);
     server.onNotFound(handleCaptivePortal); // catch all unknown URLs → redirect
-    server.on("/sensors",     handleSensors);
-    server.on("/wifi",        HTTP_GET,  handleWifiGet);
-    server.on("/scan",        HTTP_GET,  handleScan);
-    server.on("/set_wifi",    HTTP_POST, handleSetWifi);
+
+    server.on("/sensors",      handleSensors);
+    server.on("/wifi",         HTTP_GET,  handleWifiGet);
+    server.on("/scan",         HTTP_GET,  handleScan);
+    server.on("/set_wifi",     HTTP_POST, handleSetWifi);
     server.on("/prov_status",  HTTP_GET,  handleProvStatus);
     server.on("/provision",    HTTP_POST, handleProvision);
-    server.on("/device_info", HTTP_GET,  handleDeviceInfo);
-    server.on("/set_token",   HTTP_POST, handleSetToken);
-    server.on("/set_thresh",             handleSetThresh);
-    server.on("/get_thresh",  HTTP_GET,  handleGetThresh);
+    server.on("/device_info",  HTTP_GET,  handleDeviceInfo);
+    server.on("/set_token",    HTTP_POST, handleSetToken);
+    server.on("/set_thresh",              handleSetThresh);
+    server.on("/get_thresh",   HTTP_GET,  handleGetThresh);
 
-    loadThresholdsFromNVS(); // Load saved thresholds on boot
+    loadThresholdsFromNVS();
     server.begin();
     Serial.println("[Web] Server started");
 }
