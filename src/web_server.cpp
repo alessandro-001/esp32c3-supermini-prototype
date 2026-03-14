@@ -277,7 +277,9 @@ function saveWifi() {
   fetch('/set_wifi', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: 'ssid=' + encodeURIComponent(ssid) + '&pass=' + encodeURIComponent(pass)
+    body: 'ssid=' + encodeURIComponent(ssid) + 
+          '&pass=' + encodeURIComponent(pass) + 
+          '&secure=' + (secure ? 'true' : 'false')
   }).then(r => r.text()).then(t => {
     showMsg(t, t.includes('Connected') ? 'success' : 'error');
     if (t.includes('Connected')) {
@@ -451,8 +453,13 @@ static void handleSetWifi() {
     }
     String ssid = server.arg("ssid");
     String pass = server.arg("pass");
+
+    // Don't validate password length for open networks
+    bool isOpen = !server.hasArg("secure") || server.arg("secure") == "false";
+    if (isOpen) pass = "";
+
     if (!wifiConfigSave(ssid, pass)) {
-        server.send(400, "text/plain", "Invalid password");
+        server.send(400, "text/plain", "Invalid password (min 8 chars)");
         return;
     }
     bool ok = wifiConfigConnect(10000);
