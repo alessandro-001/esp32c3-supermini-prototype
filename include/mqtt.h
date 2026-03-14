@@ -1,7 +1,7 @@
 #pragma once
 #include <Arduino.h>
 
-// ── MQTT ─────────────────────────────────────────────────────────────────────
+//! ── MQTT ─────────────────────────────────────────────────────────────────────
 
 void mqttInit(const String& token);     // accepts dynamic token
 void mqttHandle();                      // call in loop()
