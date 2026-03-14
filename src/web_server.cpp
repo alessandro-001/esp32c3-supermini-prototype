@@ -8,6 +8,7 @@
 #include "secrets.h"
 #include "sensors.h"
 #include "wifi_config.h"
+#include "sensors/ens160.h"
 #include "provisioning.h"
 #include "mqtt.h"
 
@@ -113,7 +114,26 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
     </div>
   </div>
 
-  <!-- WiFi Connection -->
+  <!-- Air Quality -->
+  <div class="step" id="step-aqi">
+    <div class="step-header"><span style="font-size:28px;">🌬️</span><div class="step-title">Air Quality</div></div>
+    <div class="row">
+      <span>AQI</span>
+      <span><span class="val" id="aqi">–</span> <span id="aqi-label" style="font-size:0.9rem;color:#aaa;">–</span></span>
+    </div>
+    <div class="row">
+      <span>TVOC</span>
+      <span><span class="val" id="tvoc">–</span> ppb</span>
+    </div>
+    <div class="row">
+      <span>eCO2</span>
+      <span><span class="val" id="eco2">–</span> ppm</span>
+    </div>
+    <div class="row">
+      <span>Status</span>
+      <span id="aqi-status" style="font-size:0.9rem;color:#aaa;">–</span>
+    </div>
+  </div>
   <div class="step" id="step2">
     <div class="step-header"><span style="font-size:28px;">📶</span><div class="step-title">WiFi Connection</div></div>
     <div class="row">
@@ -145,12 +165,20 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
     </div>
     <div class="input-row">
       <div>
-        <label>Max Temp (°C)</label>
+        <label>🌡 Max Temp (°C)</label>
         <input type="number" id="thresh-temp" step="0.5" min="-40" max="125" placeholder="30">
       </div>
       <div>
-        <label>Max Humidity (%)</label>
+        <label>💧 Max Humidity (%)</label>
         <input type="number" id="thresh-hum" step="1" min="0" max="100" placeholder="80">
+      </div>
+      <div>
+        <label>🌬️ Max TVOC (ppb)</label>
+        <input type="number" id="thresh-tvoc" step="50" min="0" max="65000" placeholder="500">
+      </div>
+      <div>
+        <label>💨 Max eCO2 (ppm)</label>
+        <input type="number" id="thresh-eco2" step="50" min="400" max="65000" placeholder="1000">
       </div>
     </div>
     <button class="thresh" onclick="saveThresholds()">💾 Save Thresholds</button>
@@ -163,7 +191,9 @@ function loadThresholds() {
     .then(r => r.json())
     .then(th => {
       document.getElementById('thresh-temp').value = th.temp;
-      document.getElementById('thresh-hum').value = th.hum;
+      document.getElementById('thresh-hum').value  = th.hum;
+      document.getElementById('thresh-tvoc').value = th.tvoc;
+      document.getElementById('thresh-eco2').value = th.eco2;
     });
 }
 
@@ -188,13 +218,15 @@ function checkProvStatus() {
 
 function saveThresholds() {
   const temp = parseFloat(document.getElementById("thresh-temp").value);
-  const hum = parseFloat(document.getElementById("thresh-hum").value);
-  if (isNaN(temp) || isNaN(hum)) {
-    showMsg("Enter valid threshold values", "error");
+  const hum  = parseFloat(document.getElementById("thresh-hum").value);
+  const tvoc = parseFloat(document.getElementById("thresh-tvoc").value);
+  const eco2 = parseFloat(document.getElementById("thresh-eco2").value);
+  if (isNaN(temp) || isNaN(hum) || isNaN(tvoc) || isNaN(eco2)) {
+    showMsg("Enter valid values for all thresholds", "error");
     return;
   }
   showMsg("Saving thresholds...", "info");
-  fetch("/set_thresh?temp=" + temp + "&hum=" + hum)
+  fetch("/set_thresh?temp=" + temp + "&hum=" + hum + "&tvoc=" + tvoc + "&eco2=" + eco2)
     .then(r => r.text())
     .then(() => showMsg("✓ Thresholds saved!", "success"))
     .catch(() => showMsg("Failed to save", "error"));
@@ -268,10 +300,24 @@ function updateStatus() {
   }).catch(() => {});
 }
 
+function aqiColor(aqi) {
+  const colors = { 1:'#2ecc71', 2:'#a8e063', 3:'#f39c12', 4:'#e67e22', 5:'#e74c3c' };
+  return colors[aqi] || '#aaa';
+}
+
 function pollSensors() {
   fetch('/sensors').then(r => r.json()).then(d => {
     document.getElementById('temp').textContent = d.temp !== undefined ? d.temp.toFixed(1) : '–';
-    document.getElementById('hum').textContent = d.hum !== undefined ? d.hum.toFixed(1) : '–';
+    document.getElementById('hum').textContent  = d.hum  !== undefined ? d.hum.toFixed(1)  : '–';
+    if (d.aqi) {
+      const aqiEl = document.getElementById('aqi');
+      aqiEl.textContent = d.aqi;
+      aqiEl.style.color = aqiColor(d.aqi);
+      document.getElementById('aqi-label').textContent = d.aqi_label || '–';
+      document.getElementById('tvoc').textContent = d.tvoc !== undefined ? d.tvoc : '–';
+      document.getElementById('eco2').textContent = d.eco2 !== undefined ? d.eco2 : '–';
+      document.getElementById('aqi-status').textContent = d.aqi_status || '–';
+    }
   });
 }
 
@@ -301,6 +347,8 @@ setInterval(updateStatus, 5000);
 // ── Global threshold variables (single source of truth) ──────────────────────
 float threshTemp = 30.0f;
 float threshHum  = 80.0f;
+float threshTvoc = 500.0f;
+float threshEco2 = 1000.0f;
 
 extern float sensorTemp;
 extern float sensorHum;
@@ -351,22 +399,34 @@ static String getDeviceMacString() {
 
 static void loadThresholdsFromNVS() {
     Preferences prefs;
-    prefs.begin(THRESH_NVS_NS, true); // read-only
+    prefs.begin(THRESH_NVS_NS, true);
     threshTemp = prefs.getFloat("temp", 30.0f);
     threshHum  = prefs.getFloat("hum",  80.0f);
+    threshTvoc = prefs.getFloat("tvoc", 500.0f);
+    threshEco2 = prefs.getFloat("eco2", 1000.0f);
     prefs.end();
-    Serial.printf("[Thresh] Loaded — Temp: %.1f, Hum: %.1f\n", threshTemp, threshHum);
+    Serial.printf("[Thresh] Loaded — Temp: %.1f, Hum: %.1f, TVOC: %.0f, eCO2: %.0f\n",
+                  threshTemp, threshHum, threshTvoc, threshEco2);
 }
 
-static void saveThresholdsToNVS(float temp, float hum) {
+static void saveThresholdsToNVS(float temp, float hum, float tvoc, float eco2) {
     Preferences prefs;
-    prefs.begin(THRESH_NVS_NS, false); // read-write
+    prefs.begin(THRESH_NVS_NS, false);
     prefs.putFloat("temp", temp);
     prefs.putFloat("hum",  hum);
+    prefs.putFloat("tvoc", tvoc);
+    prefs.putFloat("eco2", eco2);
     prefs.end();
 }
 
 // ── HTTP Handlers ─────────────────────────────────────────────────────────────
+
+// ── Captive Portal — makes iPhone/Android connect without internet ────────────
+static void handleCaptivePortal() {
+    // iOS checks this URL to detect internet — we redirect to our page
+    server.sendHeader("Location", "http://192.168.4.1/", true);
+    server.send(302, "text/plain", "");
+}
 
 static void handleRoot() {
     server.send(200, "text/html", HTML_PAGE);
@@ -452,25 +512,43 @@ static void handleSetToken() {
 }
 
 static void handleSensors() {
-    char buf[64];
-    snprintf(buf, sizeof(buf), "{\"temp\":%.1f,\"hum\":%.1f}", sensorTemp, sensorHum);
+    char buf[192];
+    snprintf(buf, sizeof(buf),
+        "{"
+        "\"temp\":%.1f,"
+        "\"hum\":%.1f,"
+        "\"aqi\":%d,"
+        "\"aqi_label\":\"%s\","
+        "\"tvoc\":%d,"
+        "\"eco2\":%d,"
+        "\"aqi_status\":\"%s\""
+        "}",
+        sensorTemp,
+        sensorHum,
+        ens160AQI,
+        ens160AQILabel(ens160AQI),
+        ens160TVOC,
+        ens160eCO2,
+        ens160Status.c_str()
+    );
     server.send(200, "application/json", buf);
 }
 
 static void handleSetThresh() {
     if (server.hasArg("temp")) threshTemp = server.arg("temp").toFloat();
     if (server.hasArg("hum"))  threshHum  = server.arg("hum").toFloat();
+    if (server.hasArg("tvoc")) threshTvoc = server.arg("tvoc").toFloat();
+    if (server.hasArg("eco2")) threshEco2 = server.arg("eco2").toFloat();
 
-    // FIX: use consistent NVS namespace via helper
-    saveThresholdsToNVS(threshTemp, threshHum);
+    saveThresholdsToNVS(threshTemp, threshHum, threshTvoc, threshEco2);
 
-    Serial.printf("[Thresh] Saved — Temp: %.1f, Hum: %.1f\n", threshTemp, threshHum);
+    Serial.printf("[Thresh] Saved — Temp: %.1f, Hum: %.1f, TVOC: %.0f, eCO2: %.0f\n",
+                  threshTemp, threshHum, threshTvoc, threshEco2);
 
     // Update alert flags immediately
     alertTemp = (sensorTemp > threshTemp);
     alertHum  = (sensorHum  > threshHum);
 
-    // FIX: only publish if MQTT is ready
     if (mqttIsConnected()) {
         mqttPublishAttributes();
     }
@@ -479,16 +557,26 @@ static void handleSetThresh() {
 }
 
 static void handleGetThresh() {
-    char buf[64];
-    // FIX: use single threshTemp/threshHum variables (no more thresholdTemp/thresholdHum)
-    snprintf(buf, sizeof(buf), "{\"temp\":%.2f,\"hum\":%.2f}", threshTemp, threshHum);
+    char buf[128];
+    snprintf(buf, sizeof(buf),
+             "{\"temp\":%.2f,\"hum\":%.2f,\"tvoc\":%.0f,\"eco2\":%.0f}",
+             threshTemp, threshHum, threshTvoc, threshEco2);
     server.send(200, "application/json", buf);
 }
 
 // ── Server Init ───────────────────────────────────────────────────────────────
 
 void webServerInit() {
-    server.on("/",            handleRoot);
+    server.on("/",                          handleRoot);
+
+    // iOS captive portal detection URLs
+    server.on("/hotspot-detect.html",       handleCaptivePortal);
+    server.on("/library/test/success.html", handleCaptivePortal);
+    server.on("/success.txt",               handleCaptivePortal);
+    // Android captive portal detection URLs
+    server.on("/generate_204",              handleCaptivePortal);
+    server.on("/gen_204",                   handleCaptivePortal);
+    server.onNotFound(handleCaptivePortal); // catch all unknown URLs → redirect
     server.on("/sensors",     handleSensors);
     server.on("/wifi",        HTTP_GET,  handleWifiGet);
     server.on("/scan",        HTTP_GET,  handleScan);
