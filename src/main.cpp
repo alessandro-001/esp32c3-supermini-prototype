@@ -23,21 +23,22 @@ void setup() {
     delay(1500);
     Serial.println("\n=== BOSS FARM Smart Monitor ===");
 
-    // LDR init
-    ldrInit();
-
+    
     // NeoPixel init
     ring.begin();
     ring.setBrightness(BRIGHTNESS);
     ring.clear();
     ring.show();
     Serial.println("✓ NeoPixel on GPIO3");
-
+    
     // Sensor init
     shtc3Init();   // I2C — temp & humidity (GPIO8/9)
     ens160Init();  // SPI — air quality (GPIO4/5/6/7)
-
-        // Start AP (always available for configuration)
+    
+    // LDR init
+    ldrInit();
+    
+    // Start AP (always available for configuration)
     WiFi.mode(WIFI_AP_STA);
     String apSsid = String(AP_SSID) + "_" + WiFi.macAddress().substring(12);
     apSsid.replace(":", "");

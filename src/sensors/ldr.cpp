@@ -21,5 +21,5 @@ void ldrRead() {
     int raw = analogRead(LDR_PIN);
     ldrLightOn = (raw > LDR_THRESHOLD);
 
-    Serial.printf("[LDR] raw=%d  light=%s\n", raw, ldrLightOn ? "ON" : "OFF");
+    //Serial.printf("[LDR] raw=%d  light=%s\n", raw, ldrLightOn ? "ON" : "OFF");
 }

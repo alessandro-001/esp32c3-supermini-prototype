@@ -91,12 +91,13 @@ const String& wifiConfigSsid() {
 bool wifiConfigConnect(uint32_t timeoutMs) {
   if (gSsid.isEmpty()) return false;
 
-  WiFi.disconnect(true);  // disconnect only — do NOT erase config (second true was killing AP+STA mode)
-  delay(200);
-  WiFi.mode(WIFI_AP_STA); // re-assert AP+STA mode before connecting
+  WiFi.disconnect(true);  // full disconnect
+  delay(100);
+  WiFi.mode(WIFI_STA); // station mode only
   WiFi.begin(gSsid.c_str(), gPass.c_str());
 
   Serial.printf("[WiFi] Connecting to %s", gSsid.c_str());
+  Serial.printf("[WiFi] Trying SSID: %s, PASS: %s\n", gSsid.c_str(), gPass.c_str());
 
   const uint32_t start = millis();
   while (WiFi.status() != WL_CONNECTED && (millis() - start) < timeoutMs) {
@@ -110,7 +111,7 @@ bool wifiConfigConnect(uint32_t timeoutMs) {
     return true;
   }
 
-  Serial.println("[WiFi] Connection failed");
+  Serial.printf("[WiFi] Connection failed, status: %d\n", WiFi.status());
   return false;
 }
 
