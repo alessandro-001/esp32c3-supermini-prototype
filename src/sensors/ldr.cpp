@@ -4,13 +4,15 @@
 #include <Arduino.h>
 
 bool ldrLightOn = false;
+bool ldrOK      = false;
 static uint32_t _lastRead = 0;
 
-//* LDR — Light Detection Sensor (photoresistor on GPIO2)
+//* LDR — Light Detection Sensor
 
 void ldrInit() {
     pinMode(LDR_PIN, INPUT);
-    Serial.println("✓ LDR on GPIO2");
+    ldrOK = false; // will be set on first valid read
+    Serial.printf("✓ LDR on GPIO%d\n", LDR_PIN);
 }
 
 void ldrRead() {
@@ -19,7 +21,9 @@ void ldrRead() {
     _lastRead = now;
 
     int raw = analogRead(LDR_PIN);
-    ldrLightOn = (raw > LDR_THRESHOLD);
+    ldrOK = (raw > 0 && raw < 4095); // 0 = floating low, 4095 = floating high = disconnected
+    if (!ldrOK) return;
 
+    ldrLightOn = (raw > LDR_THRESHOLD);
     //Serial.printf("[LDR] raw=%d  light=%s\n", raw, ldrLightOn ? "ON" : "OFF");
 }

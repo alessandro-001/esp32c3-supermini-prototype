@@ -93,7 +93,7 @@ bool wifiConfigConnect(uint32_t timeoutMs) {
 
   WiFi.disconnect(true);  // full disconnect
   delay(100);
-  WiFi.mode(WIFI_STA); // station mode only
+  WiFi.mode(WIFI_AP_STA);
   WiFi.begin(gSsid.c_str(), gPass.c_str());
 
   Serial.printf("[WiFi] Connecting to %s", gSsid.c_str());

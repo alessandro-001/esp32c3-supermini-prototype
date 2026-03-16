@@ -11,6 +11,7 @@
 #include "provisioning.h"
 #include "mqtt.h"
 
+
 WebServer server(80); // HTTP server on port 80
 
 //* Wi-Fi Configuration Implementation + Web Server Endpoints + UI
@@ -522,22 +523,46 @@ function aqiColor(aqi) {
 
 function pollSensors() {
   fetch('/sensors').then(r => r.json()).then(d => {
-    document.getElementById('temp').textContent = (d.temp !== undefined ? d.temp.toFixed(1) : '–') + ' °C';
-    document.getElementById('hum').textContent  = (d.hum  !== undefined ? d.hum.toFixed(1)  : '–') + ' %';
-    // ── LDR light status ──────────────────────────────────────────────────────
+    // ── SHTC3 ────────────────────────────────────────────────────────────────
+    const tempEl = document.getElementById('temp');
+    const humEl  = document.getElementById('hum');
+    if (d.shtc3_ok) {
+      tempEl.textContent = d.temp.toFixed(1) + ' °C';
+      tempEl.style.color = '';
+      humEl.textContent  = d.hum.toFixed(1) + ' %';
+      humEl.style.color  = '';
+    } else {
+      tempEl.textContent = 'N/A'; tempEl.style.color = 'var(--muted)';
+      humEl.textContent  = 'N/A'; humEl.style.color  = 'var(--muted)';
+    }
+    // ── LDR ──────────────────────────────────────────────────────────────────
     const lightEl = document.getElementById('light');
-    lightEl.textContent = d.light_on !== undefined ? (d.light_on ? 'ON' : 'OFF') : '–';
-    lightEl.className = 'sensor-tile-val ' + (d.light_on !== undefined ? (d.light_on ? 'light-on' : 'light-off') : '');
-    // ── Air quality ───────────────────────────────────────────────────────────
-    if (d.aqi) {
+    if (d.ldr_ok) {
+      lightEl.textContent = d.light_on ? 'ON' : 'OFF';
+      lightEl.className = 'sensor-tile-val ' + (d.light_on ? 'light-on' : 'light-off');
+      lightEl.style.color = '';
+    } else {
+      lightEl.textContent = 'N/A';
+      lightEl.className = 'sensor-tile-val';
+      lightEl.style.color = 'var(--muted)';
+    }
+    // ── ENS160 ───────────────────────────────────────────────────────────────
+    if (d.ens160_ok && d.aqi >= 1) {
       const aqiEl = document.getElementById('aqi');
       aqiEl.innerHTML = d.aqi + ' <span id="aqi-label" style="font-size:0.75rem;color:var(--muted);font-weight:400;">' + (d.aqi_label || '') + '</span>';
       aqiEl.className = 'sensor-tile-val aqi-' + d.aqi;
-      document.getElementById('tvoc').innerHTML = (d.tvoc !== undefined ? d.tvoc : '–') + ' <span style="font-size:0.7rem;color:var(--muted);">ppb</span>';
-      document.getElementById('eco2').innerHTML = (d.eco2 !== undefined ? d.eco2 : '–') + ' <span style="font-size:0.7rem;color:var(--muted);">ppm</span>';
+      document.getElementById('tvoc').innerHTML = d.tvoc + ' <span style="font-size:0.7rem;color:var(--muted);">ppb</span>';
+      document.getElementById('eco2').innerHTML = d.eco2 + ' <span style="font-size:0.7rem;color:var(--muted);">ppm</span>';
       const statusEl = document.getElementById('aqi-status');
       statusEl.textContent = d.aqi_status || '–';
       statusEl.style.color = d.aqi_status === 'Normal' ? '#00e676' : 'var(--muted)';
+    } else {
+      ['aqi', 'tvoc', 'eco2', 'aqi-status'].forEach(id => {
+        const el = document.getElementById(id);
+        el.textContent = 'N/A';
+        el.className = 'sensor-tile-val';
+        el.style.color = 'var(--muted)';
+      });
     }
   });
 }
@@ -972,26 +997,32 @@ static void handleSetToken() {
 
 static void handleSensors() {
     addCorsHeaders(); // allows discover page to fetch sensor data from this unit
-    char buf[220];  // bumped from 192 to fit light_on field
+    char buf[300];  // bumped to fit all sensor ok flags
     snprintf(buf, sizeof(buf),
         "{"
         "\"temp\":%.1f,"
         "\"hum\":%.1f,"
+        "\"shtc3_ok\":%s,"
         "\"aqi\":%d,"
         "\"aqi_label\":\"%s\","
         "\"tvoc\":%d,"
         "\"eco2\":%d,"
         "\"aqi_status\":\"%s\","
-        "\"light_on\":%s"
+        "\"ens160_ok\":%s,"
+        "\"light_on\":%s,"
+        "\"ldr_ok\":%s"
         "}",
         sensorTemp,
         sensorHum,
+        sensorOK   ? "true" : "false",
         ens160AQI,
         ens160AQILabel(ens160AQI),
         ens160TVOC,
         ens160eCO2,
         ens160Status.c_str(),
-        ldrLightOn ? "true" : "false"
+        ens160OK   ? "true" : "false",
+        ldrLightOn ? "true" : "false",
+        ldrOK      ? "true" : "false"
     );
     server.send(200, "application/json", buf);
 }
