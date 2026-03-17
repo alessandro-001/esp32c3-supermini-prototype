@@ -32,7 +32,7 @@ void setup() {
     Serial.println("✓ NeoPixel on GPIO3");
     
     // Sensor init
-    shtc3Init();   // I2C — temp & humidity (GPIO8/9)
+    shtc3Init();   // I2C — temp & humidity (GPIO8/9)  
     ens160Init();  // SPI — air quality (GPIO4/5/6/7)
     
     // LDR init
