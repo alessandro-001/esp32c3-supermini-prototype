@@ -8,7 +8,7 @@
 //! ── Hardware Pins ESP32C3 ───────────────────────────────────────────────────────────────────────────────────────────
 #define NEOPIXEL_PIN        3
 #define NUM_LEDS            12
-#define BRIGHTNESS          60  // RGB brightness (0-255)
+#define BRIGHTNESS          80  // RGB brightness (0-255)
 
 // I2C — SHTC3 Temperature & Humidity
 #define I2C_SDA             8   // GPIO8

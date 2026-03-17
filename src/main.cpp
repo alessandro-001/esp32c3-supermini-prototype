@@ -15,13 +15,13 @@ Adafruit_NeoPixel ring(NUM_LEDS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 
 // ── LED state ─────────────────────────────────────────────────────────────────
 static uint32_t lastLedUpdate = 0;
-static float    breathAngle   = 0.0f;
 static uint16_t targetHue     = 32768;
+static uint16_t rainbowHue    = 0;      // slow rainbow when no sensors
 
 void setup() {
     Serial.begin(115200);
     delay(1500);
-    Serial.println("\n=== BOSS FARM Smart Monitor ===");
+    Serial.println("\n====== BOSS FARM Smart Monitor ======");
 
     
     // NeoPixel init
@@ -88,19 +88,21 @@ void loop() {
         targetHue = (uint16_t)((1.0f - norm) * 43690); // Blue(cold) → Red(hot)
     }
 
-    // ── LED update (breathing effect) ────────────────────────────────────────
+    // ── LED update (smooth colour fade) ──────────────────────────────────────
     if (now - lastLedUpdate >= LED_INTERVAL) {
         lastLedUpdate = now;
 
         if (sensorOK) {
-            breathAngle += 0.05f;
-            if (breathAngle > TWO_PI) breathAngle -= TWO_PI;
-            uint8_t bri = (uint8_t)(155 + 100 * sin(breathAngle));
-            ring.fill(ring.gamma32(ring.ColorHSV(targetHue, 255, bri)));
+            // smooth temp-mapped hue — slow interpolation toward target
+            float norm = constrain((sensorTemp - TEMP_MIN) / (TEMP_MAX - TEMP_MIN), 0.0f, 1.0f);
+            uint16_t newHue = (uint16_t)((1.0f - norm) * 43690);
+            if (targetHue < newHue) targetHue += min((uint16_t)20, (uint16_t)(newHue - targetHue));
+            else if (targetHue > newHue) targetHue -= min((uint16_t)20, (uint16_t)(targetHue - newHue));
+            ring.fill(ring.gamma32(ring.ColorHSV(targetHue, 255, 200)));
         } else {
-            ring.clear();
-            static bool warnedLed = false;
-            if (!warnedLed) { Serial.println("⚠️ Sensor not found — LEDs off"); warnedLed = true; }
+            // smooth rainbow — faster cycle, full brightness
+            rainbowHue += 128; // full cycle ~10s
+            ring.fill(ring.gamma32(ring.ColorHSV(rainbowHue, 255, 200)));
         }
         ring.show();
     }
