@@ -1,14 +1,14 @@
 #pragma once
 #include <Arduino.h>
 
-//! ── SHTC3 shared state ───────────────────────────────────────────────────────
+//! ── SHTC3 /T&H/ shared state ───────────────────────────────────────────────────────
 extern float sensorTemp;        // Current temperature reading (°C)
 extern float sensorHum;         // Current humidity reading (%)
 extern bool  sensorOK;          // True if SHTC3 initialised OK
 extern bool  alertTemp;         // True if temperature exceeds threshold
 extern bool  alertHum;          // True if humidity exceeds threshold
 
-//! ── ENS160 shared state ──────────────────────────────────────────────────────
+//! ── ENS160 /AQI/ shared state ──────────────────────────────────────────────────────
 extern uint8_t  ens160AQI;      // Air Quality Index (1–5)
 extern uint16_t ens160TVOC;     // Total VOC in ppb
 extern uint16_t ens160eCO2;     // Equivalent CO2 in ppm
