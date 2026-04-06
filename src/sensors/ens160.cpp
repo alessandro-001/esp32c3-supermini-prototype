@@ -4,9 +4,7 @@
 #include <DFRobot_ENS160.h>
 #include <Wire.h>
 
-//* Fermion ENS160 Air Quality sensor module (I2C)
-//* Shares I2C bus with SHTC3 (GPIO8=SDA, GPIO9=SCL)
-//* ENS160 I2C address: 0x53 (default), SHTC3: 0x70 — no conflict
+//* Fermion ENS160 Air Quality + Temperature + Humiditysensor module (I2C) 
 
 // ── Shared sensor values (definitions) ───────────────────────────────────────
 uint8_t  ens160AQI    = 0;
