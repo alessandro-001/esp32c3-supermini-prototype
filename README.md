@@ -1,4 +1,4 @@
-# BOSS FARM Smart Monitor — Firmware
+# Smart Farm Monitor — Firmware
 
 ![ESP32-C3](https://img.shields.io/badge/ESP32--C3-Lolin_C3_Mini-blue?style=flat-square)
 ![PlatformIO](https://img.shields.io/badge/PlatformIO-Arduino-orange?style=flat-square)
