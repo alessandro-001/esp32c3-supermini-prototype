@@ -7,6 +7,7 @@
 #include <WiFi.h>
 #include "provisioning.h"
 #include "mqtt.h"
+#include "cloud/google_sheets.h"  // Google sheets integration
 
 //* ESP32C3 Smart Monitor Prototype - MAIN *//
 
@@ -18,6 +19,11 @@ static uint32_t lastLedUpdate = 0;
 static uint16_t targetHue     = 32768;
 static uint16_t rainbowHue    = 0;      // slow rainbow when no sensors
 
+// ── Google Sheets publishing control ─────────────────────────────────────────
+bool googleSheetsEnabled = true;  // Set to false to STOP Google Sheets publishing
+
+
+// ── Main setup and loop ───────────────────────────────────────────────────────
 void setup() {
     Serial.begin(115200);
     delay(1500);
@@ -33,7 +39,7 @@ void setup() {
     
     // Sensor init
     shtc3Init();   // I2C — temp & humidity (GPIO8/9)  
-    ens160Init();  // SPI — air quality (GPIO4/5/6/7)
+    ens160Init();  // I2C — air quality (same bus, 0x53)  ← FIXED COMMENT
     
     // LDR init
     ldrInit();
@@ -48,6 +54,15 @@ void setup() {
     // Load and connect to saved WiFi
     wifiConfigBegin(HOME_SSID, HOME_PASSWORD);
     bool wifiConnected = wifiConfigConnect(10000);
+
+    // ── Google Sheets init ───────────────────────────────────────────────────
+    googleSheetsInit();
+    
+    // Test send on boot if WiFi connected
+    if (wifiConnected) {
+        String bootMsg = "{\"event\":\"boot\",\"rssi\":" + String(WiFi.RSSI()) + "}";
+        googleSheetsSend(bootMsg);
+    }
 
     // Automatic provisioning on boot
     String token = provisioningInit();
@@ -107,6 +122,26 @@ void loop() {
         ring.show();
     }
 
+    // ── Google Sheets publish every 60s ──────────────────────────────────────
+    static uint32_t lastSheetPublish = 0;
+    if (googleSheetsEnabled && now - lastSheetPublish >= 60000) {  // ← Added flag check
+        lastSheetPublish = now;
+        if (isWiFiConnected()) {
+            String deviceId = "SM_" + WiFi.macAddress().substring(12);
+            deviceId.replace(":", "");
+            
+            String data = "{";
+            data += "\"device\":\"" + deviceId + "\",";
+            data += "\"temp\":" + String(sensorTemp, 1) + ",";
+            data += "\"hum\":" + String(sensorHum, 1) + ",";
+            data += "\"aqi\":" + String(ens160AQI) + ",";
+            data += "\"tvoc\":" + String(ens160TVOC) + ",";
+            data += "\"eco2\":" + String(ens160eCO2);
+            data += "}";
+            googleSheetsSend(data);
+        }
+    }
+
     // ── MQTT telemetry publish every 5s ──────────────────────────────────────
     static uint32_t lastMqttPublish = 0;
     static bool     sentAttributes  = false;
@@ -114,7 +149,7 @@ void loop() {
 
     bool isConnected = mqttIsConnected();
 
-    // Detect fresh connection (including reconnects) → re-send attributes
+    // Detect fresh connection (including reconnects) - re-send attributes
     if (!wasConnected && isConnected) {
         sentAttributes = false;
     }
