@@ -3,3 +3,8 @@
 #ifndef UNIT_TEST
 int main() { return 0; }
 #endif
+
+#ifdef ENABLE_TESTS
+// Tests will run when this is defined
+
+#endif
