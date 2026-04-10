@@ -8,6 +8,7 @@
 #include "provisioning.h"
 #include "mqtt.h"
 #include "cloud/google_sheets.h"  // Google sheets integration
+#include "local_mqtt.h"        // Local MQTT for Raspberry Pi pipeline
 
 //* ESP32C3 Smart Monitor Prototype - MAIN *//
 
@@ -76,6 +77,9 @@ void setup() {
     }
 
     webServerInit();
+
+    // ── Local MQTT (Raspberry Pi pipeline) ──────────────────────────────────
+    localMqttInit();
 }
 
 void loop() {
@@ -147,9 +151,8 @@ void loop() {
     static bool     sentAttributes  = false;
     static bool     wasConnected    = false;
 
-    bool isConnected = mqttIsConnected();
-
     // Detect fresh connection (including reconnects) - re-send attributes
+    bool isConnected = mqttIsConnected();
     if (!wasConnected && isConnected) {
         sentAttributes = false;
     }
@@ -164,8 +167,14 @@ void loop() {
                 sentAttributes = true;
             }
         }
+        
+        // Local Raspberry Pi pipeline (new)
+        localMqttPublish();
     }
 
     provisioningHandle();
     mqttHandle();
+
+    // ── Local MQTT (Raspberry Pi pipeline) ──────────────────────────────────
+    localMqttHandle();
 }
