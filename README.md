@@ -20,6 +20,7 @@ ESP32-C3 based environmental monitoring device. Reads temperature, humidity, air
 - [Firmware Architecture](#firmware-architecture)
 - [Web Endpoints Reference](#web-endpoints-reference)
 - [ThingsBoard Setup Guide](#thingsboard-setup-guide)
+- [Docker Local Infrastructure](#docker-local-infrastructure)
 - [Build, Flash & Test](#build-flash--test)
 
 ---
@@ -296,6 +297,195 @@ To show all units on a single dashboard without manual device assignment:
 ### 6. Alerts
 
 Thresholds are pushed as device attributes on every MQTT connect. Use them in ThingsBoard alarm rules to trigger notifications when `alert_temp` or `alert_hum` telemetry keys become `true`.
+
+---
+
+## Docker Local Infrastructure
+
+A complete local monitoring stack runs in Docker on a **Raspberry Pi host**, mirroring the cloud architecture for development and testing without relying on external services. The ESP32-C3 devices publish telemetry via MQTT to the Pi-hosted services.
+
+### Architecture
+
+```
+ESP32-C3 Devices
+    ↓ (MQTT)
+    ├──► Mosquitto (MQTT Broker)
+    │         ↓ (subscribes)
+    │    Telegraf (Metrics Collector)
+    │         ↓ (writes)
+    │    InfluxDB (Time-Series DB)
+    │         ↓ (queries)
+    │    Grafana (Dashboards)
+    │
+    └──► (optional) Direct to InfluxDB
+```
+
+### Services
+
+| Service | Port | Purpose | URL |
+|---|---|---|---|
+| **Mosquitto** | 1883 | MQTT broker for device telemetry | `mqtt://localhost:1883` |
+| **InfluxDB** | 8086 | Time-series database for metrics | `http://localhost:8086` |
+| **Telegraf** | 8125 | MQTT → InfluxDB pipeline | Internal |
+| **Grafana** | 3000 | Real-time dashboards & visualization | `http://localhost:3000` |
+
+### Quick Start
+
+```bash
+# Start all services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop services
+docker-compose down
+
+# Stop and remove all data
+docker-compose down -v
+```
+
+### Service Access
+
+**Grafana Dashboard**
+- URL: `http://localhost:3000`
+- Default credentials: `admin` / `admin123`
+- Pre-configured datasource: InfluxDB
+
+**InfluxDB Console**
+- URL: `http://localhost:8086`
+- Default credentials: `admin` / `admin123`
+- Organization: `smartfarm`
+- Bucket: `sensors`
+
+**Mosquitto MQTT Broker**
+- Host: `localhost`
+- Port: `1883` (MQTT) / `9001` (WebSocket)
+- Credentials: `admin` / `admin`
+- Topics:
+  - `v1/devices/me/telemetry` — Device telemetry from ESP32
+  - `v1/devices/me/attributes` — Device attributes
+  - `esp32c3/+/sensors` — Per-device sensor data
+  - `esp32c3/+/status` — Per-device status
+
+### Device Telemetry Flow
+
+When the ESP32-C3 publishes to Mosquitto:
+
+1. **Mosquitto** receives the MQTT message on topic `v1/devices/me/telemetry`
+2. **Telegraf** subscribes to all device topics, parses JSON telemetry, and extracts fields:
+   - Temperature, humidity, AQI, TVOC, eCO2, light status, alert flags
+3. **InfluxDB** stores metrics with timestamps and metadata (device MAC, IP, firmware version)
+4. **Grafana** queries InfluxDB and renders real-time visualizations
+
+### Sample Telemetry (ESP32 → Mosquitto)
+
+```json
+{
+  "temperature": 22.50,
+  "humidity": 55.00,
+  "alert_temp": false,
+  "alert_hum": false,
+  "aqi": 2,
+  "aqi_label": "Good",
+  "tvoc": 120,
+  "eco2": 650,
+  "air_quality_status": "Normal",
+  "light_on": true
+}
+```
+
+### Creating Custom Dashboards in Grafana
+
+1. Open Grafana at `http://localhost:3000`
+2. **+ Create → Dashboard**
+3. **Add Panel** and select **InfluxDB** as datasource
+4. Use Flux queries to visualize metrics:
+
+```flux
+from(bucket: "sensors")
+  |> range(start: -24h)
+  |> filter(fn: (r) => r._measurement == "sensor_telemetry")
+  |> filter(fn: (r) => r._field == "temperature")
+  |> aggregateWindow(every: 5m, fn: mean)
+```
+
+### Troubleshooting Docker
+
+**Services won't start:**
+```bash
+# Check service health
+docker-compose ps
+
+# View detailed logs
+docker-compose logs <service_name>
+```
+
+**Mosquitto connection refused:**
+```bash
+# Test MQTT connectivity
+mqtt_sub -h localhost -t '#' -u admin -P admin
+```
+
+**InfluxDB showing no data:**
+- Ensure Telegraf is running and configured with correct MQTT/InfluxDB credentials
+- Check Telegraf logs: `docker-compose logs telegraf`
+- Verify MQTT topic subscriptions match what ESP32 publishes
+
+**Grafana datasource error:**
+- Verify InfluxDB is healthy: `docker-compose ps`
+- Check the datasource configuration in Grafana settings
+- Ensure the API token matches `INFLUXDB_INIT_ADMIN_TOKEN` in docker-compose.yml
+
+### Raspberry Pi Setup
+
+The Docker stack is optimized to run on Raspberry Pi (ARM architecture). All container images use multi-architecture builds compatible with Raspberry Pi 3/4/5.
+
+**Pi Host Requirements:**
+- Raspberry Pi 3+ (minimum 2GB RAM recommended)
+- Raspberry Pi OS or similar Linux distribution
+- Docker Engine 19.03+ and Docker Compose
+- 2GB+ free disk space for database volumes
+
+**Installation on Raspberry Pi:**
+```bash
+# Install Docker
+curl -fsSL https://get.docker.com -o get-docker.sh | sh
+
+# Add pi user to docker group
+sudo usermod -aG docker pi
+
+# Install Docker Compose
+sudo apt-get install docker-compose
+```
+
+**Running on Pi:**
+```bash
+# Clone/navigate to project
+cd /path/to/ESP32C3_SM_BF_prototype
+
+# Start Docker stack (may take longer on Pi)
+docker-compose up -d
+
+# Monitor startup (especially InfluxDB, which initializes on first run)
+docker-compose logs -f
+
+# Access Grafana from Pi's IP
+# http://<pi-ip>:3000
+```
+
+**Network Configuration for Remote Access:**
+If accessing Grafana/InfluxDB from a machine other than the Pi:
+```bash
+# Find Pi's IP address
+hostname -I
+
+# Access Grafana
+http://<pi-ip>:3000
+
+# Configure ESP32 MQTT broker IP
+# In device web UI, set MQTT host to Pi's IP (not localhost)
+```
 
 ---
 
