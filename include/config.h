@@ -26,12 +26,12 @@
 #define LDR_THRESHOLD   2900  // above = light ON, adjust to environment
 
 //! ── Sensor & LED Timing ─────────────────────────────────────────────────────────────────────────────────────
-#define SENSOR_INTERVAL     2000
-#define LED_INTERVAL        20
+#define SENSOR_INTERVAL     2000    // Sensor read interval (ms)
+#define LED_INTERVAL        20      // LED animation update interval (ms)
 
 //! ── Temperature Range ───────────────────────────────────────────────────────────────────────────────────────
-#define TEMP_MIN            15.0f
-#define TEMP_MAX            35.0f
+#define TEMP_MIN            15.0f   // Minimum expected temperature (°C) for color mapping
+#define TEMP_MAX            35.0f   // Maximum expected temperature (°C) for color mapping
 
 //! ── ThingsBoard API ─────────────────────────────────────────────────────────────────────────────────────────
 #define TB_SERVER     "mqtt.thingsboard.cloud"          // ThingsBoard MQTT broker
@@ -39,5 +39,10 @@
 #define TB_HTTP_HOST  "https://thingsboard.cloud"       // for provisioning HTTP
 
 //! ── Device Identity ─────────────────────────────────────────────────────────────────────────────────────────
-#define DEVICE_GROUP        "PROTO_BF_DEVICES"
-#define FIRMWARE_VERSION    "1.0.0"
+#define DEVICE_GROUP        "PROTO_BF_DEVICES"          // Device group for ThingsBoard provisioning
+#define FIRMWARE_VERSION    "1.0.0"                     // Firmware version for ThingsBoard provisioning
+
+//! ── Local MQTT (Raspberry Pi / Docker) ─────────────────────────────────────
+#define LOCAL_MQTT_SERVER   "192.168.0.250"             // Pi's static IP
+#define LOCAL_MQTT_PORT     1883                        // MQTT port
+#define LOCAL_MQTT_TOPIC    "IESWIC3A/data"             // Topic for local MQTT (e.g., for Node-RED)
