@@ -43,6 +43,6 @@
 #define FIRMWARE_VERSION    "1.0.0"                     // Firmware version for ThingsBoard provisioning
 
 //! ── Local MQTT (Raspberry Pi / Docker) ─────────────────────────────────────
-#define LOCAL_MQTT_SERVER   "192.168.0.250"             // Pi's static IP
+#define LOCAL_MQTT_SERVER   "192.168.0.16"             // Pi's static IP .16 //or my macbook .240
 #define LOCAL_MQTT_PORT     1883                        // MQTT port
 #define LOCAL_MQTT_TOPIC    "IESWIC3A/data"             // Topic for local MQTT (e.g., for Node-RED)
