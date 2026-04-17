@@ -168,13 +168,13 @@ void loop() {
             }
         }
         
-        // Local Raspberry Pi pipeline (new)
+        //* Local Raspberry Pi pipeline (new)
         localMqttPublish();
     }
 
     provisioningHandle();
     mqttHandle();
 
-    // ── Local MQTT (Raspberry Pi pipeline) ──────────────────────────────────
+    //* Local MQTT (Raspberry Pi pipeline) ──────────────────────────────────
     localMqttHandle();
 }

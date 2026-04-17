@@ -7,7 +7,7 @@
 static WiFiClient   localWifiClient;
 static PubSubClient localMqtt(localWifiClient);
 
-// Local MQTT client for Raspberry Pi pipeline (e.g., Node-RED)
+//* Local MQTT client for Raspberry Pi pipeline (e.g., Node-RED)
 
 static void localMqttConnect() {
     if (WiFi.status() != WL_CONNECTED) return;
