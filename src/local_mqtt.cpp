@@ -9,6 +9,10 @@ static PubSubClient localMqtt(localWifiClient);
 
 //* Local MQTT client for Raspberry Pi pipeline (e.g., Node-RED)
 
+static String getTelemetryDeviceId() {
+    return "IESWIC3A_" + WiFi.macAddress().substring(12);
+}
+
 static void localMqttConnect() {
     if (WiFi.status() != WL_CONNECTED) return;
     if (localMqtt.connected()) return;
@@ -48,10 +52,12 @@ bool localMqttIsConnected() {
 void localMqttPublish() {
     if (!localMqtt.connected()) return;
 
+    String deviceId = getTelemetryDeviceId();
+
     char payload[512];
     snprintf(payload, sizeof(payload),
         "{"
-        "\"device_id\":\"IESWIC3A_%s\","
+        "\"device_id\":\"%s\","
         "\"firmware\":\"%s\","
         "\"rssi\":%d,"
         "\"temperature\":%.2f,"
@@ -65,7 +71,7 @@ void localMqttPublish() {
         "\"air_quality_status\":\"%s\","
         "\"light_on\":%s"
         "}",
-        WiFi.macAddress().substring(12).c_str(),
+        deviceId.c_str(),
         FIRMWARE_VERSION,
         WiFi.RSSI(),
         sensorTemp,

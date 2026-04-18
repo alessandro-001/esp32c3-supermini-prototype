@@ -891,6 +891,11 @@ static void saveThresholdsToNVS(float temp, float hum, float tvoc, float eco2) {
     prefs.putFloat("eco2", eco2);
     prefs.end();
 }
+/// Returns a stable device ID for telemetry topics, based on MAC address
+static String getTelemetryDeviceId() {
+    // Must match the device_id currently published by local_mqtt.cpp
+    return "IESWIC3A_" + WiFi.macAddress().substring(12);
+}
 
 // ── HTTP Handlers ─────────────────────────────────────────────────────────────
 
@@ -1035,12 +1040,45 @@ static void handleSetThresh() {
 
     saveThresholdsToNVS(threshTemp, threshHum, threshTvoc, threshEco2);
 
-    Serial.printf("[Thresh] Saved — Temp: %.1f, Hum: %.1f, TVOC: %.0f, eCO2: %.0f\n",
+    Serial.printf("[Thresh] Saved locally — Temp: %.1f, Hum: %.1f, TVOC: %.0f, eCO2: %.0f\n",
                   threshTemp, threshHum, threshTvoc, threshEco2);
 
-    // Update alert flags immediately
     alertTemp = (sensorTemp > threshTemp);
     alertHum  = (sensorHum  > threshHum);
+
+    if (WiFi.isConnected()) {
+        String deviceId = getTelemetryDeviceId();
+        String apiUrl = "http://192.168.0.16:8000/api/thresholds/" + deviceId;
+
+        StaticJsonDocument<256> doc;
+        doc["device_id"] = deviceId;
+
+        JsonObject thresh = doc.createNestedObject("thresholds");
+        thresh["temp_high"] = threshTemp;
+        thresh["hum_high"]  = threshHum;
+        thresh["tvoc_high"] = threshTvoc;
+        thresh["co2_high"]  = threshEco2;   // API expects co2_high, not eco2_high
+
+        String payload;
+        serializeJson(doc, payload);
+
+        HTTPClient http;
+        http.begin(apiUrl);
+        http.addHeader("Content-Type", "application/json");
+
+        int httpCode = http.POST(payload);
+        String response = http.getString();
+
+        if (httpCode >= 200 && httpCode < 300) {
+            Serial.printf("[Thresh] API update OK (HTTP %d): %s\n", httpCode, response.c_str());
+        } else {
+            Serial.printf("[Thresh] API update FAILED (HTTP %d): %s\n", httpCode, response.c_str());
+        }
+
+        http.end();
+    } else {
+        Serial.println("[Thresh] WiFi not connected, thresholds not sent to API");
+    }
 
     if (mqttIsConnected()) {
         mqttPublishAttributes();
