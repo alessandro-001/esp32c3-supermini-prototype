@@ -19,6 +19,11 @@ extern String   ens160Status;   // Human-readable status string
 extern bool ldrLightOn;     // true if light is detected above threshold
 extern bool ldrOK;      // true if LDR is connected and reading valid
 
+// Shared helper to keep all outbound payloads consistent for light state.
+inline int ldrLightOnNum() {
+	return ldrLightOn ? 1 : 0;
+}
+
 //! ── SHTC3 API ────────────────────────────────────────────────────────────────
 void        shtc3Init();
 void        shtc3Read();
