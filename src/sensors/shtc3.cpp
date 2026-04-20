@@ -17,6 +17,10 @@ bool  sensorOK   = false;
 bool  alertTemp  = false;
 bool  alertHum   = false;
 
+// Thresholds are owned by web_server.cpp and updated via /set_thresh.
+extern float threshTemp;
+extern float threshHum;
+
 // ── I2C scan (debug utility) ──────────────────────────────────────────────────
 static void i2cScan() {
     Serial.println("\n[I2C Scanner] Scanning...");
@@ -65,6 +69,8 @@ void shtc3Read() {
     if (t > -40 && t < 120 && h >= 0 && h <= 100) {
         sensorTemp = t;
         sensorHum  = h;
+        alertTemp = (sensorTemp > threshTemp);
+        alertHum  = (sensorHum  > threshHum);
     } else {
         Serial.println("SHTC3: bad reading — skipping");
     }

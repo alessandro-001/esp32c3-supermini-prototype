@@ -10,6 +10,7 @@
 #include "wifi_config.h"
 #include "provisioning.h"
 #include "mqtt.h"
+#include "local_mqtt.h"
 
 
 WebServer server(80); // HTTP server on port 80
@@ -1002,11 +1003,15 @@ static void handleSetToken() {
 
 static void handleSensors() {
     addCorsHeaders(); // allows discover page to fetch sensor data from this unit
-    char buf[300];  // bumped to fit all sensor ok flags
+    char buf[420];  // includes alert and light boolean/numeric mirrors
     snprintf(buf, sizeof(buf),
         "{"
         "\"temp\":%.1f,"
         "\"hum\":%.1f,"
+        "\"alert_temp\":%s,"
+        "\"alert_temp_num\":%d,"
+        "\"alert_hum\":%s,"
+        "\"alert_hum_num\":%d,"
         "\"shtc3_ok\":%s,"
         "\"aqi\":%d,"
         "\"aqi_label\":\"%s\","
@@ -1015,10 +1020,15 @@ static void handleSensors() {
         "\"aqi_status\":\"%s\","
         "\"ens160_ok\":%s,"
         "\"light_on\":%s,"
+        "\"light_on_num\":%d,"
         "\"ldr_ok\":%s"
         "}",
         sensorTemp,
         sensorHum,
+        alertTemp ? "true" : "false",
+        alertTemp ? 1 : 0,
+        alertHum  ? "true" : "false",
+        alertHum  ? 1 : 0,
         sensorOK   ? "true" : "false",
         ens160AQI,
         ens160AQILabel(ens160AQI),
@@ -1027,6 +1037,7 @@ static void handleSensors() {
         ens160Status.c_str(),
         ens160OK   ? "true" : "false",
         ldrLightOn ? "true" : "false",
+        ldrLightOnNum(),
         ldrOK      ? "true" : "false"
     );
     server.send(200, "application/json", buf);
@@ -1045,6 +1056,17 @@ static void handleSetThresh() {
 
     alertTemp = (sensorTemp > threshTemp);
     alertHum  = (sensorHum  > threshHum);
+
+    if (localMqttIsConnected()) {
+      // Low/aqi defaults are kept here until dedicated UI fields are introduced.
+      localMqttPublishConfig(threshTemp, 10.0f,
+                   threshHum,  25.0f,
+                   3,
+                   threshEco2,
+                   threshTvoc);
+    } else {
+      Serial.println("[LocalMQTT] Not connected, config topic not published");
+    }
 
     if (WiFi.isConnected()) {
         String deviceId = getTelemetryDeviceId();

@@ -22,6 +22,7 @@ static uint16_t rainbowHue    = 0;      // slow rainbow when no sensors
 
 // ── Google Sheets publishing control ─────────────────────────────────────────
 bool googleSheetsEnabled = true;  // Set to false to STOP Google Sheets publishing
+static const bool thingsBoardEnabled = false; // Disable cloud MQTT/provisioning noise (rc=3)
 
 
 // ── Main setup and loop ───────────────────────────────────────────────────────
@@ -65,15 +66,17 @@ void setup() {
         googleSheetsSend(bootMsg);
     }
 
-    // Automatic provisioning on boot
-    String token = provisioningInit();
-    if (token.isEmpty() && wifiConnected) {
-        token = provisioningRequest();
-        if (!token.isEmpty()) {
+    // ThingsBoard path can be disabled while local pipeline is active.
+    if (thingsBoardEnabled) {
+        String token = provisioningInit();
+        if (token.isEmpty() && wifiConnected) {
+            token = provisioningRequest();
+            if (!token.isEmpty()) {
+                mqttInit(token);
+            }
+        } else {
             mqttInit(token);
         }
-    } else {
-        mqttInit(token);
     }
 
     webServerInit();
@@ -151,29 +154,34 @@ void loop() {
     static bool     sentAttributes  = false;
     static bool     wasConnected    = false;
 
-    // Detect fresh connection (including reconnects) - re-send attributes
-    bool isConnected = mqttIsConnected();
-    if (!wasConnected && isConnected) {
-        sentAttributes = false;
-    }
-    wasConnected = isConnected;
-
     if (now - lastMqttPublish >= 5000) {
         lastMqttPublish = now;
-        if (isConnected) {
-            mqttPublish();
-            if (!sentAttributes) {
-                mqttPublishAttributes();
-                sentAttributes = true;
+
+        if (thingsBoardEnabled) {
+            // Detect fresh connection (including reconnects) - re-send attributes
+            bool isConnected = mqttIsConnected();
+            if (!wasConnected && isConnected) {
+                sentAttributes = false;
+            }
+            wasConnected = isConnected;
+
+            if (isConnected) {
+                mqttPublish();
+                if (!sentAttributes) {
+                    mqttPublishAttributes();
+                    sentAttributes = true;
+                }
             }
         }
-        
-        //* Local Raspberry Pi pipeline (new)
+
+        //* Local Raspberry Pi pipeline
         localMqttPublish();
     }
 
-    provisioningHandle();
-    mqttHandle();
+    if (thingsBoardEnabled) {
+        provisioningHandle();
+        mqttHandle();
+    }
 
     //* Local MQTT (Raspberry Pi pipeline) ──────────────────────────────────
     localMqttHandle();

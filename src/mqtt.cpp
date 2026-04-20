@@ -76,7 +76,7 @@ bool mqttIsConnected() {
 void mqttPublish() {
     if (!mqtt.connected()) return;
 
-    char payload[256];
+    char payload[320];
     snprintf(payload, sizeof(payload),
         "{"
         "\"temperature\":%.2f,"
@@ -88,7 +88,8 @@ void mqttPublish() {
         "\"tvoc\":%d,"
         "\"eco2\":%d,"
         "\"air_quality_status\":\"%s\","
-        "\"light_on\":%s"
+        "\"light_on\":%s,"
+        "\"light_on_num\":%d"
         "}",
         sensorTemp,
         sensorHum,
@@ -99,7 +100,8 @@ void mqttPublish() {
         ens160TVOC,
         ens160eCO2,
         ens160Status.c_str(),
-        ldrLightOn ? "true" : "false"
+        ldrLightOn ? "true" : "false",
+        ldrLightOnNum()
     );
 
     mqtt.publish("v1/devices/me/telemetry", payload);
