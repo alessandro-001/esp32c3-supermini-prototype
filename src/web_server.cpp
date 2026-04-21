@@ -375,8 +375,16 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
     </div>
     <div class="thresh-grid">
       <div>
+        <label>🌡 Min Temp (°C)</label>
+        <input type="number" id="thresh-temp-low" step="0.5" min="-40" max="125" placeholder="5">
+      </div>
+      <div>
         <label>🌡 Max Temp (°C)</label>
         <input type="number" id="thresh-temp" step="0.5" min="-40" max="125" placeholder="30">
+      </div>
+      <div>
+        <label>💧 Min Humidity (%)</label>
+        <input type="number" id="thresh-hum-low" step="1" min="0" max="100" placeholder="20">
       </div>
       <div>
         <label>💧 Max Humidity (%)</label>
@@ -404,10 +412,12 @@ function loadThresholds() {
   fetch('/get_thresh')
     .then(r => r.json())
     .then(th => {
-      document.getElementById('thresh-temp').value = th.temp;
-      document.getElementById('thresh-hum').value  = th.hum;
-      document.getElementById('thresh-tvoc').value = th.tvoc;
-      document.getElementById('thresh-eco2').value = th.eco2;
+      document.getElementById('thresh-temp').value     = th.temp;
+      document.getElementById('thresh-temp-low').value = th.temp_low;
+      document.getElementById('thresh-hum').value      = th.hum;
+      document.getElementById('thresh-hum-low').value  = th.hum_low;
+      document.getElementById('thresh-tvoc').value     = th.tvoc;
+      document.getElementById('thresh-eco2').value     = th.eco2;
     });
 }
 
@@ -431,16 +441,22 @@ function checkProvStatus() {
 }
 
 function saveThresholds() {
-  const temp = parseFloat(document.getElementById("thresh-temp").value);
-  const hum  = parseFloat(document.getElementById("thresh-hum").value);
-  const tvoc = parseFloat(document.getElementById("thresh-tvoc").value);
-  const eco2 = parseFloat(document.getElementById("thresh-eco2").value);
-  if (isNaN(temp) || isNaN(hum) || isNaN(tvoc) || isNaN(eco2)) {
+  const temp    = parseFloat(document.getElementById("thresh-temp").value);
+  const tempLow = parseFloat(document.getElementById("thresh-temp-low").value);
+  const hum     = parseFloat(document.getElementById("thresh-hum").value);
+  const humLow  = parseFloat(document.getElementById("thresh-hum-low").value);
+  const tvoc    = parseFloat(document.getElementById("thresh-tvoc").value);
+  const eco2    = parseFloat(document.getElementById("thresh-eco2").value);
+  if ([temp, tempLow, hum, humLow, tvoc, eco2].some(isNaN)) {
     showMsg("Enter valid values for all thresholds", "error");
     return;
   }
+  if (tempLow >= temp) { showMsg("Min Temp must be lower than Max Temp", "error"); return; }
+  if (humLow  >= hum)  { showMsg("Min Humidity must be lower than Max Humidity", "error"); return; }
   showMsg("Saving thresholds...", "info");
-  fetch("/set_thresh?temp=" + temp + "&hum=" + hum + "&tvoc=" + tvoc + "&eco2=" + eco2)
+  fetch("/set_thresh?temp=" + temp + "&temp_low=" + tempLow +
+        "&hum=" + hum + "&hum_low=" + humLow +
+        "&tvoc=" + tvoc + "&eco2=" + eco2)
     .then(r => r.text())
     .then(() => showMsg("✓ Thresholds saved!", "success"))
     .catch(() => showMsg("Failed to save", "error"));
@@ -820,10 +836,12 @@ function stopScan(){
 )rawliteral";
 
 // ── Global threshold variables (single source of truth) ──────────────────────
-float threshTemp = 30.0f;
-float threshHum  = 80.0f;
-float threshTvoc = 500.0f;
-float threshEco2 = 1000.0f;
+float threshTemp    = 30.0f;
+float threshTempLow = 5.0f;   // NEW — minimum temperature threshold
+float threshHum     = 80.0f;
+float threshHumLow  = 20.0f;  // NEW — minimum humidity threshold
+float threshTvoc    = 500.0f;
+float threshEco2    = 1000.0f;
 
 extern float sensorTemp;
 extern float sensorHum;
@@ -874,22 +892,26 @@ static String getDeviceMacString() {
 static void loadThresholdsFromNVS() {
     Preferences prefs;
     prefs.begin(THRESH_NVS_NS, true);
-    threshTemp = prefs.getFloat("temp", 30.0f);
-    threshHum  = prefs.getFloat("hum",  80.0f);
-    threshTvoc = prefs.getFloat("tvoc", 500.0f);
-    threshEco2 = prefs.getFloat("eco2", 1000.0f);
+    threshTemp    = prefs.getFloat("temp",      30.0f);
+    threshTempLow = prefs.getFloat("temp_low",   5.0f);
+    threshHum     = prefs.getFloat("hum",       80.0f);
+    threshHumLow  = prefs.getFloat("hum_low",   20.0f);
+    threshTvoc    = prefs.getFloat("tvoc",     500.0f);
+    threshEco2    = prefs.getFloat("eco2",    1000.0f);
     prefs.end();
-    Serial.printf("[Thresh] Loaded — Temp: %.1f, Hum: %.1f, TVOC: %.0f, eCO2: %.0f\n",
-                  threshTemp, threshHum, threshTvoc, threshEco2);
+    Serial.printf("[Thresh] Loaded — TempH:%.1f TempL:%.1f HumH:%.1f HumL:%.1f TVOC:%.0f eCO2:%.0f\n",
+                  threshTemp, threshTempLow, threshHum, threshHumLow, threshTvoc, threshEco2);
 }
 
-static void saveThresholdsToNVS(float temp, float hum, float tvoc, float eco2) {
+static void saveThresholdsToNVS(float temp, float tempLow, float hum, float humLow, float tvoc, float eco2) {
     Preferences prefs;
     prefs.begin(THRESH_NVS_NS, false);
-    prefs.putFloat("temp", temp);
-    prefs.putFloat("hum",  hum);
-    prefs.putFloat("tvoc", tvoc);
-    prefs.putFloat("eco2", eco2);
+    prefs.putFloat("temp",     temp);
+    prefs.putFloat("temp_low", tempLow);
+    prefs.putFloat("hum",      hum);
+    prefs.putFloat("hum_low",  humLow);
+    prefs.putFloat("tvoc",     tvoc);
+    prefs.putFloat("eco2",     eco2);
     prefs.end();
 }
 /// Returns a stable device ID for telemetry topics, based on MAC address
@@ -1044,42 +1066,47 @@ static void handleSensors() {
 }
 
 static void handleSetThresh() {
-    if (server.hasArg("temp")) threshTemp = server.arg("temp").toFloat();
-    if (server.hasArg("hum"))  threshHum  = server.arg("hum").toFloat();
-    if (server.hasArg("tvoc")) threshTvoc = server.arg("tvoc").toFloat();
-    if (server.hasArg("eco2")) threshEco2 = server.arg("eco2").toFloat();
+    if (server.hasArg("temp"))     threshTemp    = server.arg("temp").toFloat();
+    if (server.hasArg("temp_low")) threshTempLow = server.arg("temp_low").toFloat();
+    if (server.hasArg("hum"))      threshHum     = server.arg("hum").toFloat();
+    if (server.hasArg("hum_low"))  threshHumLow  = server.arg("hum_low").toFloat();
+    if (server.hasArg("tvoc"))     threshTvoc    = server.arg("tvoc").toFloat();
+    if (server.hasArg("eco2"))     threshEco2    = server.arg("eco2").toFloat();
 
-    saveThresholdsToNVS(threshTemp, threshHum, threshTvoc, threshEco2);
+    saveThresholdsToNVS(threshTemp, threshTempLow, threshHum, threshHumLow, threshTvoc, threshEco2);
 
-    Serial.printf("[Thresh] Saved locally — Temp: %.1f, Hum: %.1f, TVOC: %.0f, eCO2: %.0f\n",
-                  threshTemp, threshHum, threshTvoc, threshEco2);
+    Serial.printf("[Thresh] Saved — TempH:%.1f TempL:%.1f HumH:%.1f HumL:%.1f TVOC:%.0f eCO2:%.0f\n",
+                  threshTemp, threshTempLow, threshHum, threshHumLow, threshTvoc, threshEco2);
 
-    alertTemp = (sensorTemp > threshTemp);
-    alertHum  = (sensorHum  > threshHum);
+    // Alert fires on either side of the band
+    alertTemp = (sensorTemp > threshTemp) || (sensorTemp < threshTempLow);
+    alertHum  = (sensorHum  > threshHum)  || (sensorHum  < threshHumLow);
 
     if (localMqttIsConnected()) {
-      // Low/aqi defaults are kept here until dedicated UI fields are introduced.
-      localMqttPublishConfig(threshTemp, 10.0f,
-                   threshHum,  25.0f,
-                   3,
-                   threshEco2,
-                   threshTvoc);
+        localMqttPublishConfig(threshTemp, threshTempLow,
+                               threshHum,  threshHumLow,
+                               3,
+                               threshEco2,
+                               threshTvoc);
     } else {
-      Serial.println("[LocalMQTT] Not connected, config topic not published");
+        Serial.println("[LocalMQTT] Not connected, config topic not published");
     }
 
     if (WiFi.isConnected()) {
         String deviceId = getTelemetryDeviceId();
         String apiUrl = "http://192.168.0.16:8000/api/thresholds/" + deviceId;
 
-        StaticJsonDocument<256> doc;
+        // Increase buffer: now sending 6 threshold fields
+        StaticJsonDocument<384> doc;
         doc["device_id"] = deviceId;
 
         JsonObject thresh = doc.createNestedObject("thresholds");
         thresh["temp_high"] = threshTemp;
+        thresh["temp_low"]  = threshTempLow;
         thresh["hum_high"]  = threshHum;
+        thresh["hum_low"]   = threshHumLow;
         thresh["tvoc_high"] = threshTvoc;
-        thresh["co2_high"]  = threshEco2;   // API expects co2_high, not eco2_high
+        thresh["co2_high"]  = threshEco2;
 
         String payload;
         serializeJson(doc, payload);
@@ -1110,10 +1137,10 @@ static void handleSetThresh() {
 }
 
 static void handleGetThresh() {
-    char buf[128];
+    char buf[256];
     snprintf(buf, sizeof(buf),
-             "{\"temp\":%.2f,\"hum\":%.2f,\"tvoc\":%.0f,\"eco2\":%.0f}",
-             threshTemp, threshHum, threshTvoc, threshEco2);
+             "{\"temp\":%.2f,\"temp_low\":%.2f,\"hum\":%.2f,\"hum_low\":%.2f,\"tvoc\":%.0f,\"eco2\":%.0f}",
+             threshTemp, threshTempLow, threshHum, threshHumLow, threshTvoc, threshEco2);
     server.send(200, "application/json", buf);
 }
 

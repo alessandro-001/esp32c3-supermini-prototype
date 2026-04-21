@@ -7,7 +7,9 @@
 
 // Threshold values defined in web_server.cpp
 extern float threshTemp;
+extern float threshTempLow;
 extern float threshHum;
+extern float threshHumLow;
 extern float threshTvoc;
 extern float threshEco2;
 
@@ -112,7 +114,7 @@ void mqttPublish() {
 void mqttPublishAttributes() {
     if (!mqtt.connected()) return;
 
-    char payload[384];
+    char payload[512];
     snprintf(payload, sizeof(payload),
         "{"
         "\"mac\":\"%s\","
@@ -120,7 +122,9 @@ void mqttPublishAttributes() {
         "\"rssi\":%d,"
         "\"firmware\":\"%s\","
         "\"highTempThreshold\":%.1f,"
+        "\"lowTempThreshold\":%.1f,"
         "\"highHumThreshold\":%.1f,"
+        "\"lowHumThreshold\":%.1f,"
         "\"highTvocThreshold\":%.0f,"
         "\"highEco2Threshold\":%.0f"
         "}",
@@ -129,7 +133,9 @@ void mqttPublishAttributes() {
         WiFi.RSSI(),
         FIRMWARE_VERSION,
         threshTemp,
+        threshTempLow,
         threshHum,
+        threshHumLow,
         threshTvoc,
         threshEco2
     );
