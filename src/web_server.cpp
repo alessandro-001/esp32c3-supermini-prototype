@@ -1066,6 +1066,8 @@ static void handleSensors() {
 }
 
 static void handleSetThresh() {
+    bool fromApi = server.hasArg("from_api") && server.arg("from_api") == "1";
+
     if (server.hasArg("temp"))     threshTemp    = server.arg("temp").toFloat();
     if (server.hasArg("temp_low")) threshTempLow = server.arg("temp_low").toFloat();
     if (server.hasArg("hum"))      threshHum     = server.arg("hum").toFloat();
@@ -1092,7 +1094,7 @@ static void handleSetThresh() {
         Serial.println("[LocalMQTT] Not connected, config topic not published");
     }
 
-    if (WiFi.isConnected()) {
+    if (!fromApi && !WiFi.isConnected()) {
         String deviceId = getTelemetryDeviceId();
         String apiUrl = "http://192.168.0.16:8000/api/thresholds/" + deviceId;
 
