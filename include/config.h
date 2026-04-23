@@ -5,25 +5,29 @@
 //! ── Access Point ────────────────────────────────────────────────────────────────────────────────────────────
 #define AP_SSID             "ESP32C3_Hotspot"  //* http://192.168.4.1
 
-//! ── Hardware Pins ESP32C3 ───────────────────────────────────────────────────────────────────────────────────────────
+//! ── Hardware Pins ESP32-C3 ───────────────────────────────────────────────────────────────────────────────────────────
+// NeoPixel RGB ring (WS2812B)
 #define NEOPIXEL_PIN        3
 #define NUM_LEDS            12
 #define BRIGHTNESS          80  // RGB brightness (0-255)
 
-// I2C — SHTC3 Temperature & Humidity
+// I2C — SHTC3 & ENS160 Temperature & Humidity + Air Quality (shared bus)
 #define I2C_SDA             8   // GPIO8
 #define I2C_SCL             9   // GPIO9
 
 // SPI — ENS160 Air Quality (default SPI bus)
-#define ENS160_SCK_PIN      4   // GPIO4  (SCK)
-#define ENS160_MOSI_PIN     6   // GPIO6  (SDI / MOSI)
-#define ENS160_MISO_PIN     5   // GPIO5  (SDO / MISO)
-#define ENS160_CS_PIN       7   // GPIO7  (CS  / SS)
-// #define ENS160_INT_PIN   10  // GPIO10 (INT — optional, not used)
+// #define ENS160_SCK_PIN      4   // GPIO4  (SCK)
+// #define ENS160_MOSI_PIN     6   // GPIO6  (SDI / MOSI)
+// #define ENS160_MISO_PIN     5   // GPIO5  (SDO / MISO)
+// #define ENS160_CS_PIN       7   // GPIO7  (CS  / SS)
+// #define ENS160_INT_PIN      10  // GPIO10 (INT)
 
 // LDR — Light Detection
 #define LDR_PIN         2     // GPIO2
 #define LDR_THRESHOLD   2900  // above = light ON, adjust to environment
+
+// Factory Reset button — active LOW (internal pullup)
+#define FACTORY_RESET_PIN   4       // GPIO4 — SMD button to GND
 
 //! ── Sensor & LED Timing ─────────────────────────────────────────────────────────────────────────────────────
 #define SENSOR_INTERVAL     2000    // Sensor read interval (ms)
@@ -46,3 +50,8 @@
 #define LOCAL_MQTT_SERVER   "192.168.0.16"             // Pi's static IP .16 //or my macbook .240
 #define LOCAL_MQTT_PORT     1883                        // MQTT port
 #define LOCAL_MQTT_TOPIC    "IESWIC3A/data"             // Topic for local MQTT (e.g., for Node-RED)
+
+//! ── mDNS ─────────────────────────────────────────────────────────────────────
+// Each device advertises as bossfarm-{MAC4}.local
+// e.g. bossfarm-61D4.local
+#define MDNS_PREFIX         "bossfarm"
