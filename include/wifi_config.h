@@ -10,7 +10,8 @@ void         wifiConfigBegin(const char* defaultSsid, const char* defaultPass); 
 bool         wifiConfigSave(const String& ssid, const String& pass);            // Save new credentials to NVS
 const String& wifiConfigSsid();                                                 // Get current saved SSID
 bool         wifiConfigConnect(uint32_t timeoutMs);                             // Connect to saved WiFi (STA mode)
-bool         wifiConfigHasCredentials();                                        // True if SSID is stored in NVS
+bool         wifiConfigHasCredentials();  
+void         wifiConfigClear();                                                 // Clear saved WiFi credentials
 
 //! ── Access Point ─────────────────────────────────────────────────────────────
 void         wifiApStart();                                                     // Start AP mode for configuration

@@ -11,29 +11,25 @@
 #include "mqtt.h"
 #include "cloud/google_sheets.h"
 #include "local_mqtt.h"
+#include "factory_reset.h"
 
 //* ESP32C3 Smart Monitor Prototype - MAIN *//
 
-// ── NeoPixel RGB ──────────────────────────────────────────────────────────────
+// ── NeoPixel ──────────────────────────────────────────────────────────────────
 Adafruit_NeoPixel ring(NUM_LEDS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
-
-// ── LED state ─────────────────────────────────────────────────────────────────
 static uint32_t lastLedUpdate = 0;
 static uint16_t targetHue     = 32768;
 static uint16_t rainbowHue    = 0;
 
 // ── Feature flags ─────────────────────────────────────────────────────────────
-bool googleSheetsEnabled              = true;
-static const bool thingsBoardEnabled  = false;
+bool googleSheetsEnabled             = true;
+static const bool thingsBoardEnabled = false;
 
-// ── Commissioning state ───────────────────────────────────────────────────────
-// "commissioned" = device has joined a WiFi network at least once.
-// When commissioned: AP hotspot is hidden (STA only).
-// On factory reset: NVS cleared → AP reappears on next boot.
+// ── Commissioning ─────────────────────────────────────────────────────────────
 static const char* DEVICE_NVS_NS    = "device";
 static const char* COMMISSIONED_KEY = "commissioned";
 
-static bool isCommissioned() {
+bool deviceIsCommissioned() {
     Preferences p;
     p.begin(DEVICE_NVS_NS, true);
     bool v = p.getBool(COMMISSIONED_KEY, false);
@@ -48,31 +44,29 @@ static void setCommissioned() {
     p.end();
 }
 
+void setCommissionedPublic() {
+    setCommissioned();
+}
+
 // ── mDNS ─────────────────────────────────────────────────────────────────────
-// Advertises as bossfarm-{MAC4}.local on the LAN
 static void startMDNS() {
-    String mac      = WiFi.macAddress();
+    String mac = WiFi.macAddress();
     mac.replace(":", "");
     String hostname = String(MDNS_PREFIX) + "-" + mac.substring(8);
     hostname.toLowerCase();
-
     if (MDNS.begin(hostname.c_str())) {
         MDNS.addService("http", "tcp", 80);
-        Serial.printf("[mDNS] Advertising as http://%s.local\n", hostname.c_str());
+        Serial.printf("[mDNS] http://%s.local\n", hostname.c_str());
     } else {
         Serial.println("[mDNS] Failed to start");
     }
 }
 
 // ── AP helpers ────────────────────────────────────────────────────────────────
-static String buildApSsid() {
+static void startAP() {
     String mac = WiFi.macAddress();
     mac.replace(":", "");
-    return String(AP_SSID) + "_" + mac.substring(8);
-}
-
-static void startAP() {
-    String apSsid = buildApSsid();
+    String apSsid = String(AP_SSID) + "_" + mac.substring(8);
     WiFi.softAP(apSsid.c_str(), AP_PASSWORD, 1);
     Serial.printf("[AP] Started: %s @ %s\n",
                   apSsid.c_str(), WiFi.softAPIP().toString().c_str());
@@ -80,7 +74,23 @@ static void startAP() {
 
 static void stopAP() {
     WiFi.softAPdisconnect(true);
-    Serial.println("[AP] Hotspot hidden — device in STA-only mode");
+    Serial.println("[AP] Hotspot hidden — STA only");
+}
+
+// ── Register Device ───────────────────────────────────────────────────────────
+bool registerDevice() {
+    Serial.println("[Register] Starting registration...");
+    bool ok = wifiConfigConnect(15000);
+    if (!ok) {
+        Serial.println("[Register] WiFi connection failed");
+        return false;
+    }
+    setCommissioned();
+    stopAP();
+    startMDNS();
+    localMqttInit();
+    Serial.println("[Register] ✓ Device registered and visible on network");
+    return true;
 }
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
@@ -89,88 +99,67 @@ void setup() {
     delay(1500);
     Serial.println("\n====== BOSS FARM Smart Monitor ======");
 
-    // NeoPixel init
     ring.begin();
     ring.setBrightness(BRIGHTNESS);
     ring.clear();
     ring.show();
     Serial.println("✓ NeoPixel on GPIO3");
 
-    // Sensor init
-    shtc3Init();   // I2C — temp & humidity (GPIO8/9)
-    ens160Init();  // I2C — air quality (same bus, 0x53)
+    // factoryResetInit(); // enable when board assembled
 
-    // LDR init
+    shtc3Init();
+    ens160Init();
     ldrInit();
 
-    // WiFi — always start in AP_STA so we can connect while AP is up
     WiFi.mode(WIFI_AP_STA);
     startAP();
 
-    wifiConfigBegin(HOME_SSID, HOME_PASSWORD);
-    bool wifiConnected = wifiConfigConnect(10000);
-
-    if (wifiConnected) {
-        if (!isCommissioned()) {
-            setCommissioned();
-            Serial.println("[Commissioning] First join complete — hiding AP");
+    if (deviceIsCommissioned()) {
+        wifiConfigBegin(HOME_SSID, HOME_PASSWORD);
+        bool ok = wifiConfigConnect(10000);
+        if (ok) {
+            stopAP();
+            startMDNS();
+            localMqttInit();
+            Serial.println("[Boot] Restored — device online");
+        } else {
+            Serial.println("[Boot] WiFi unavailable — AP visible for reconfiguration");
         }
-        stopAP();
-        startMDNS();
     } else {
-        Serial.println("[Commissioning] No WiFi — AP remains visible for setup");
+        wifiConfigBegin(HOME_SSID, HOME_PASSWORD);
+        Serial.println("[Boot] Not commissioned — waiting for Register Device");
     }
 
-    // Google Sheets init
     googleSheetsInit();
 
-    if (wifiConnected) {
-        String bootMsg = "{\"event\":\"boot\",\"rssi\":" + String(WiFi.RSSI()) + "}";
-        googleSheetsSend(bootMsg);
-    }
-
-    if (thingsBoardEnabled) {
-        String token = provisioningInit();
-        if (token.isEmpty() && wifiConnected) {
-            token = provisioningRequest();
-            if (!token.isEmpty()) mqttInit(token);
-        } else {
-            mqttInit(token);
-        }
-    }
-
     webServerInit();
-    localMqttInit();
-
     Serial.println("====== Setup complete ======\n");
 }
 
-// ── Loop ──────────────────────────────────────────────────────────────────────
+// ── Loop ─────────────────────────────────────────────────────────────────────
 void loop() {
     uint32_t now = millis();
 
-    // ── Sensor reads ─────────────────────────────────────────────────────────
+    // factoryResetHandle(); // enable when board assembled
+
     shtc3Read();
     ens160Read();
     ldrRead();
 
-    // ── Sensor warnings (once per session) ───────────────────────────────────
     static bool warnedSHTC3  = false;
     static bool warnedENS160 = false;
     if (!sensorOK  && !warnedSHTC3)  { Serial.println("⚠️ SHTC3 not found — temp/humidity unavailable"); warnedSHTC3  = true; }
     if (!ens160OK  && !warnedENS160) { Serial.println("⚠️ ENS160 not found — air quality unavailable");  warnedENS160 = true; }
 
-    // ── Web server ───────────────────────────────────────────────────────────
     webServerHandle();
 
-    // ── LED update (smooth colour fade) ──────────────────────────────────────
+    // ── LED ──────────────────────────────────────────────────────────────────
     if (now - lastLedUpdate >= LED_INTERVAL) {
         lastLedUpdate = now;
-
         if (sensorOK) {
             float norm      = constrain((sensorTemp - TEMP_MIN) / (TEMP_MAX - TEMP_MIN), 0.0f, 1.0f);
             uint16_t newHue = (uint16_t)((1.0f - norm) * 43690);
-            if (targetHue < newHue)      targetHue += min((uint16_t)20, (uint16_t)(newHue - targetHue));
+            if      (targetHue < newHue) targetHue += min((uint16_t)20, (uint16_t)(newHue - targetHue));
             else if (targetHue > newHue) targetHue -= min((uint16_t)20, (uint16_t)(targetHue - newHue));
             ring.fill(ring.gamma32(ring.ColorHSV(targetHue, 255, 200)));
         } else {
@@ -180,14 +169,13 @@ void loop() {
         ring.show();
     }
 
-    // ── Google Sheets publish every 60s ──────────────────────────────────────
+    // ── Google Sheets every 60s ───────────────────────────────────────────────
     static uint32_t lastSheetPublish = 0;
     if (googleSheetsEnabled && now - lastSheetPublish >= 60000) {
         lastSheetPublish = now;
         if (isWiFiConnected()) {
             String deviceId = "SM_" + WiFi.macAddress().substring(12);
             deviceId.replace(":", "");
-
             String data = "{";
             data += "\"device\":\"" + deviceId + "\",";
             data += "\"temp\":"  + String(sensorTemp, 1) + ",";
@@ -221,8 +209,7 @@ void loop() {
         localMqttPublish();
     }
 
-    // ── AP re-enable if WiFi drops after commissioning ───────────────────────
-    // If we lose WiFi for >30s, re-show AP so the device can be reconfigured.
+    // ── AP fallback after 30s WiFi loss ──────────────────────────────────────
     static uint32_t wifiLostAt  = 0;
     static bool     apReEnabled = false;
     static const uint32_t AP_FALLBACK_MS = 30000;
@@ -235,11 +222,7 @@ void loop() {
             apReEnabled = true;
         }
     } else {
-        if (apReEnabled) {
-            stopAP();
-            startMDNS();
-            apReEnabled = false;
-        }
+        if (apReEnabled) { stopAP(); startMDNS(); apReEnabled = false; }
         wifiLostAt = 0;
     }
 

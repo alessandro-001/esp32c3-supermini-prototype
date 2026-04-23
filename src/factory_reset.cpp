@@ -17,9 +17,12 @@ void factoryResetInit() {
 }
 
 void factoryResetHandle() {
-    bool pressed = (digitalRead(FACTORY_RESET_PIN) == LOW); // active LOW (pullup)
+    bool pressed = (digitalRead(FACTORY_RESET_PIN) == LOW);
 
     if (pressed && !_holding) {
+        // Debounce — confirm still LOW after 50ms before arming
+        delay(50);
+        if (digitalRead(FACTORY_RESET_PIN) != LOW) return;
         _holding    = true;
         _armed      = true;
         _pressStart = millis();
