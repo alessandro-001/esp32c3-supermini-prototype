@@ -1094,41 +1094,45 @@ static void handleSetThresh() {
         Serial.println("[LocalMQTT] Not connected, config topic not published");
     }
 
-    if (!fromApi && !WiFi.isConnected()) {
-        String deviceId = getTelemetryDeviceId();
-        String apiUrl = "http://192.168.0.16:8000/api/thresholds/" + deviceId;
+    // Push to central API only for UI/local changes (not when API initiated this update)
+    if (!fromApi) {
+        if (WiFi.isConnected()) {
+            String deviceId = getTelemetryDeviceId();
+            String apiUrl = "http://192.168.0.16:8000/api/thresholds/" + deviceId;
 
-        // Increase buffer: now sending 6 threshold fields
-        StaticJsonDocument<384> doc;
-        doc["device_id"] = deviceId;
+            StaticJsonDocument<384> doc;
+            doc["device_id"] = deviceId;
 
-        JsonObject thresh = doc.createNestedObject("thresholds");
-        thresh["temp_high"] = threshTemp;
-        thresh["temp_low"]  = threshTempLow;
-        thresh["hum_high"]  = threshHum;
-        thresh["hum_low"]   = threshHumLow;
-        thresh["tvoc_high"] = threshTvoc;
-        thresh["co2_high"]  = threshEco2;
+            JsonObject thresh = doc.createNestedObject("thresholds");
+            thresh["temp_high"] = threshTemp;
+            thresh["temp_low"]  = threshTempLow;
+            thresh["hum_high"]  = threshHum;
+            thresh["hum_low"]   = threshHumLow;
+            thresh["tvoc_high"] = threshTvoc;
+            thresh["co2_high"]  = threshEco2;
 
-        String payload;
-        serializeJson(doc, payload);
+            String payload;
+            serializeJson(doc, payload);
 
-        HTTPClient http;
-        http.begin(apiUrl);
-        http.addHeader("Content-Type", "application/json");
+            HTTPClient http;
+            http.begin(apiUrl);
+            http.addHeader("Content-Type", "application/json");
 
-        int httpCode = http.POST(payload);
-        String response = http.getString();
+            int httpCode = http.POST(payload);
+            String response = http.getString();
 
-        if (httpCode >= 200 && httpCode < 300) {
-            Serial.printf("[Thresh] API update OK (HTTP %d): %s\n", httpCode, response.c_str());
+            if (httpCode >= 200 && httpCode < 300) {
+                Serial.printf("[Thresh] API update OK (HTTP %d): %s\n", httpCode, response.c_str());
+            } else {
+                Serial.printf("[Thresh] API update FAILED (HTTP %d): %s\n", httpCode, response.c_str());
+            }
+
+            http.end();
         } else {
-            Serial.printf("[Thresh] API update FAILED (HTTP %d): %s\n", httpCode, response.c_str());
+            Serial.println("[Thresh] WiFi not connected, thresholds not sent to API");
         }
-
-        http.end();
     } else {
-        Serial.println("[Thresh] WiFi not connected, thresholds not sent to API");
+        Serial.println("[Thresh] Update came from API, skipping API push to avoid loop");
     }
 
     if (mqttIsConnected()) {
