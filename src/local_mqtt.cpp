@@ -3,6 +3,7 @@
 #include "sensors.h"
 #include <PubSubClient.h>
 #include <WiFi.h>
+#include <Preferences.h>
 
 //* Local MQTT client for Raspberry Pi pipeline (e.g., Node-RED)
 
@@ -28,11 +29,41 @@ static void localMqttConnect() {
     }
 }
 
+void localMqttSetBroker(const String& ip, uint16_t port) {
+    Preferences p;
+    p.begin("broker", false);
+    p.putString("ip",   ip);
+    p.putUShort("port", port);
+    p.end();
+    localMqtt.disconnect();
+    localMqtt.setServer(ip.c_str(), port);
+    Serial.printf("[LocalMQTT] Broker updated → %s:%d\n", ip.c_str(), port);
+}
+
+String localMqttGetBrokerIP() {
+    Preferences p;
+    p.begin("broker", true);
+    String ip = p.getString("ip", LOCAL_MQTT_SERVER);
+    p.end();
+    return ip;
+}
+
+uint16_t localMqttGetBrokerPort() {
+    Preferences p;
+    p.begin("broker", true);
+    uint16_t port = p.getUShort("port", LOCAL_MQTT_PORT);
+    p.end();
+    return port;
+}
+
 void localMqttInit() {
-    localMqtt.setServer(LOCAL_MQTT_SERVER, LOCAL_MQTT_PORT);
+    String brokerIp = localMqttGetBrokerIP();
+    uint16_t brokerPort = localMqttGetBrokerPort();
+
+    localMqtt.setServer(brokerIp.c_str(), brokerPort);
     localMqtt.setBufferSize(512);
     localMqttConnect();
-    Serial.println("[LocalMQTT] Initialised → " LOCAL_MQTT_SERVER);
+    Serial.printf("[LocalMQTT] Initialised → %s:%u\n", brokerIp.c_str(), brokerPort);
 }
 
 void localMqttHandle() {

@@ -60,10 +60,17 @@ String wifiScanNetworks() {
 
 /// Load saved credentials from NVS (local storage), fallback to defaults
 void wifiConfigBegin(const char* defaultSsid, const char* defaultPass) {
-  prefs.begin("netcfg", false);
-  gSsid = prefs.getString("ssid", defaultSsid);
-  gPass = prefs.getString("pass", defaultPass);
-  Serial.printf("[WiFi] Loaded SSID: %s\n", gSsid.c_str());
+    prefs.begin("netcfg", false);
+
+#ifdef DEV_MODE
+    gSsid = prefs.getString("ssid", defaultSsid);
+    gPass = prefs.getString("pass", defaultPass);
+#else
+    gSsid = prefs.getString("ssid", "");
+    gPass = prefs.getString("pass", "");
+#endif
+
+    Serial.printf("[WiFi] Loaded SSID: %s\n", gSsid.isEmpty() ? "(none)" : gSsid.c_str());
 }
 
 /// Save new credentials to NVS (local storage)
@@ -89,7 +96,11 @@ const String& wifiConfigSsid() {
 
 /// Connect to saved Wi-Fi, returns true on success
 bool wifiConfigConnect(uint32_t timeoutMs) {
-  if (gSsid.isEmpty()) return false;
+  //if (gSsid.isEmpty()) return false;
+  if (gSsid.isEmpty()) {
+        Serial.println("[WiFi] No credentials saved — skipping connect");
+        return false;
+    }
 
   WiFi.disconnect(true);  // full disconnect
   delay(100);
@@ -118,6 +129,16 @@ bool wifiConfigConnect(uint32_t timeoutMs) {
 /// Check if WiFi credentials exist in NVS
 bool wifiConfigHasCredentials() {
   return wifiConfigSsid().length() > 0;
+}
+
+/// Clear saved WiFi credentials from NVS (called by factory reset)
+void wifiConfigClear() {
+    prefs.begin("netcfg", false);
+    prefs.clear();
+    prefs.end();
+    gSsid = "";
+    gPass = "";
+    Serial.println("[WiFi] Credentials cleared");
 }
 
 /// Start Access Point mode for configuration
