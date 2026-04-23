@@ -4,10 +4,10 @@
 #include <PubSubClient.h>
 #include <WiFi.h>
 
+//* Local MQTT client for Raspberry Pi pipeline (e.g., Node-RED)
+
 static WiFiClient   localWifiClient;
 static PubSubClient localMqtt(localWifiClient);
-
-//* Local MQTT client for Raspberry Pi pipeline (e.g., Node-RED)
 
 static String getTelemetryDeviceId() {
     return "IESWIC3A_" + WiFi.macAddress().substring(12);

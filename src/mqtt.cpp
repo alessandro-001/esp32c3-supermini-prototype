@@ -31,6 +31,7 @@ static void mqttConnect() {
         return;
     }
 
+    //String clientId = "BF-" + provisioningDeviceId(); //* NEW
     String clientId = "ESP32-" + provisioningDeviceId();
     Serial.printf("[MQTT] Connecting as %s...\n", clientId.c_str());
 
