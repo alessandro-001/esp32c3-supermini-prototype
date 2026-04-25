@@ -376,7 +376,6 @@ When the ESP32-C3 publishes to Mosquitto:
 2. **Telegraf** subscribes to all device topics, parses JSON telemetry, and extracts fields:
    - Temperature, humidity, AQI, TVOC, eCO2, light status, alert flags
 3. **InfluxDB** stores metrics with timestamps and metadata (device MAC, IP, firmware version)
-4. **Grafana** queries InfluxDB and renders real-time visualizations
 
 ### Sample Telemetry (ESP32 → Mosquitto)
 

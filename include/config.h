@@ -15,13 +15,6 @@
 #define I2C_SDA             8   // GPIO8
 #define I2C_SCL             9   // GPIO9
 
-// SPI — ENS160 Air Quality (default SPI bus)
-// #define ENS160_SCK_PIN      4   // GPIO4  (SCK)
-// #define ENS160_MOSI_PIN     6   // GPIO6  (SDI / MOSI)
-// #define ENS160_MISO_PIN     5   // GPIO5  (SDO / MISO)
-// #define ENS160_CS_PIN       7   // GPIO7  (CS  / SS)
-// #define ENS160_INT_PIN      10  // GPIO10 (INT)
-
 // LDR — Light Detection
 #define LDR_PIN         2     // GPIO2
 #define LDR_THRESHOLD   2900  // above = light ON, adjust to environment
@@ -52,6 +45,4 @@
 #define LOCAL_MQTT_TOPIC    "IESWIC3A/data"             // Topic for local MQTT (e.g., for Node-RED)
 
 //! ── mDNS ─────────────────────────────────────────────────────────────────────
-// Each device advertises as bossfarm-{MAC4}.local
-// e.g. bossfarm-61D4.local
 #define MDNS_PREFIX         "bossfarm"
