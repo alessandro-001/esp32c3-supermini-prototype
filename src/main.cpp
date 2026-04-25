@@ -139,6 +139,7 @@ void setup() {
 // ── Loop ─────────────────────────────────────────────────────────────────────
 void loop() {
     uint32_t now = millis();
+    delay(1); 
 
     // factoryResetHandle(); // enable when board assembled
 
@@ -209,21 +210,41 @@ void loop() {
         localMqttPublish();
     }
 
-    // ── AP fallback after 30s WiFi loss ──────────────────────────────────────
-    static uint32_t wifiLostAt  = 0;
-    static bool     apReEnabled = false;
-    static const uint32_t AP_FALLBACK_MS = 30000;
+    // ── AP fallback + STA retry ───────────────────────────────────────────────
+    static uint32_t wifiLostAt   = 0;
+    static bool     apReEnabled  = false;
+    static uint32_t lastStaRetry = 0;
+    static const uint32_t AP_FALLBACK_MS  = 30000;
+    static const uint32_t STA_RETRY_MS    = 60000; // retry STA every 60s
 
     if (WiFi.status() != WL_CONNECTED) {
         if (wifiLostAt == 0) wifiLostAt = now;
+
+        // Re-enable AP after 30s so user can reconfigure if needed
         if (!apReEnabled && (now - wifiLostAt > AP_FALLBACK_MS)) {
-            Serial.println("[WiFi] Lost for 30s — re-enabling AP for reconfiguration");
+            Serial.println("[WiFi] Lost for 30s — re-enabling AP");
             startAP();
             apReEnabled = true;
         }
+
+        // Keep retrying STA connection every 60s — don't give up
+        if (deviceIsCommissioned() && wifiConfigHasCredentials()
+            && (now - lastStaRetry > STA_RETRY_MS)) {
+            lastStaRetry = now;
+            Serial.println("[WiFi] Retrying STA connection...");
+            bool ok = wifiConfigConnect(10000);
+            if (ok) {
+                stopAP();
+                startMDNS();
+                apReEnabled = false;
+                wifiLostAt  = 0;
+                Serial.println("[WiFi] Reconnected!");
+            }
+        }
     } else {
         if (apReEnabled) { stopAP(); startMDNS(); apReEnabled = false; }
-        wifiLostAt = 0;
+        wifiLostAt   = 0;
+        lastStaRetry = 0;
     }
 
     // ── Service handles ──────────────────────────────────────────────────────
