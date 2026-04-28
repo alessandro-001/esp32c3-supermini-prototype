@@ -14,6 +14,9 @@
 #include "factory_reset.h"
 
 //* ESP32C3 Smart Monitor Prototype - MAIN *//
+// Features:
+// - SHTC3 temp/humidity sensor
+// - ENS160 air quality sensor          
 
 // ── NeoPixel ──────────────────────────────────────────────────────────────────
 Adafruit_NeoPixel ring(NUM_LEDS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
