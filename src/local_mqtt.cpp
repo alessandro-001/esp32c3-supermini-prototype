@@ -62,17 +62,23 @@ void localMqttInit() {
 
     localMqtt.setServer(brokerIp.c_str(), brokerPort);
     localMqtt.setBufferSize(512);
+    localMqtt.setKeepAlive(30);    // 30s keepalive
+    localMqtt.setSocketTimeout(10); // 10s socket timeout
     localMqttConnect();
     Serial.printf("[LocalMQTT] Initialised → %s:%u\n", brokerIp.c_str(), brokerPort);
 }
 
 void localMqttHandle() {
-    localMqtt.loop();
-
-    static unsigned long lastReconnect = 0;
-    if (!localMqtt.connected() && millis() - lastReconnect > 5000) {
-        lastReconnect = millis();
-        localMqttConnect();
+    if (!localMqtt.loop()) {
+        // loop() returns false when connection is lost
+        static unsigned long lastReconnect = 0;
+        if (millis() - lastReconnect > 5000) {
+            lastReconnect = millis();
+            Serial.println("[LocalMQTT] Connection lost — reconnecting...");
+            localMqtt.disconnect();
+            delay(100);
+            localMqttConnect();
+        }
     }
 }
 

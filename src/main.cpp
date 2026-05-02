@@ -191,9 +191,10 @@ void loop() {
     }
 
     // ── MQTT publish every 5s ────────────────────────────────────────────────
-    static uint32_t lastMqttPublish = 0;
-    static bool     sentAttributes  = false;
-    static bool     wasConnected    = false;
+    static uint32_t lastMqttPublish    = 0;
+    static uint32_t lastSuccessPublish = 0;
+    static bool     sentAttributes     = false;
+    static bool     wasConnected       = false;
 
     if (now - lastMqttPublish >= 5000) {
         lastMqttPublish = now;
@@ -209,6 +210,17 @@ void loop() {
         }
 
         localMqttPublish();
+
+        if (localMqttIsConnected()) {
+            lastSuccessPublish = now;
+        }
+    }
+
+    // If no successful publish in 5 minutes, force reconnect
+    if (lastSuccessPublish > 0 && (now - lastSuccessPublish > 300000UL)) {
+        Serial.println("[MQTT] No publish in 5min — forcing reconnect");
+        localMqttInit();
+        lastSuccessPublish = now;
     }
 
     // ── AP fallback + STA retry ───────────────────────────────────────────────
