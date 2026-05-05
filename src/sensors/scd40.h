@@ -1,6 +1,6 @@
-// #pragma once
-// #include <Arduino.h>
+#pragma once
+#include <Arduino.h>
 
-// void        scd40Init();
-// void        scd40Read();
-// const char* scd40CO2Label(uint16_t co2);
+void        scd40Init();
+void        scd40Read();
+const char* co2Label(uint16_t co2);

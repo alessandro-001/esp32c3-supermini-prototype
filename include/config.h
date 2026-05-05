@@ -11,12 +11,12 @@
 #define NUM_LEDS            12
 #define BRIGHTNESS          80  // RGB brightness (0-255)
 
-// I2C — SHTC3 & ENS160 Temperature & Humidity + Air Quality (shared bus)
-#define I2C_SDA             8   // GPIO8
-#define I2C_SCL             9   // GPIO9
+// I2C — SHTC3 & ENS160 Temperature & Humidity + Air Quality (shared bus) now SCD40 only
+#define I2C_SDA             7   // mine is 8 // Hin is 7
+#define I2C_SCL             6   // mine is 9 // Hin is 6
 
 // LDR — Light Detection
-#define LDR_PIN         2     // GPIO2
+#define LDR_PIN         0     // mine is 2 // Hin is 0
 #define LDR_THRESHOLD   2900  // above = light ON, adjust to environment
 
 // Factory Reset button — active LOW (internal pullup)

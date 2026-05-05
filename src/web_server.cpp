@@ -12,6 +12,15 @@
 #include "mqtt.h"
 #include "local_mqtt.h"
 
+// ── Log buffer ────────────────────────────────────────────────────────────────
+#define LOG_BUF_SIZE 40
+static String _logBuf[LOG_BUF_SIZE];
+static uint32_t _logHead = 0;
+
+void logPush(const String& line) {
+    _logBuf[_logHead % LOG_BUF_SIZE] = line;
+    _logHead++;
+}
 
 extern bool registerDevice();
 extern bool deviceIsCommissioned();
@@ -176,20 +185,12 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
         <div class="sensor-tile-val" id="light">–</div>
       </div>
       <div class="sensor-tile">
-        <div class="sensor-tile-label">🌬 AQI</div>
-        <div class="sensor-tile-val" id="aqi">– <span id="aqi-label" style="font-size:0.75rem;color:var(--muted);font-weight:400;"></span></div>
-      </div>
-      <div class="sensor-tile">
-        <div class="sensor-tile-label">💨 TVOC</div>
-        <div class="sensor-tile-val" id="tvoc">– <span style="font-size:0.7rem;color:var(--muted);">ppb</span></div>
-      </div>
-      <div class="sensor-tile">
-        <div class="sensor-tile-label">💨 eCO2</div>
-        <div class="sensor-tile-val" id="eco2">– <span style="font-size:0.7rem;color:var(--muted);">ppm</span></div>
+        <div class="sensor-tile-label">💨 CO2</div>
+        <div class="sensor-tile-val" id="co2">– <span style="font-size:0.7rem;color:var(--muted);">ppm</span></div>
       </div>
       <div class="sensor-tile full">
-        <div class="sensor-tile-label">📊 Air Status</div>
-        <div class="sensor-tile-val" id="aqi-status" style="color:var(--muted);">–</div>
+        <div class="sensor-tile-label">📊 Air Quality</div>
+        <div class="sensor-tile-val" id="co2-label" style="color:var(--muted);">–</div>
       </div>
     </div>
   </div>
@@ -244,16 +245,22 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
         <label>💧 Max Humidity (%)</label>
         <input type="number" id="thresh-hum" step="1" min="0" max="100" placeholder="80">
       </div>
-      <div>
-        <label>🌬 Max TVOC (ppb)</label>
-        <input type="number" id="thresh-tvoc" step="50" min="0" max="65000" placeholder="500">
-      </div>
-      <div>
-        <label>💨 Max eCO2 (ppm)</label>
-        <input type="number" id="thresh-eco2" step="50" min="400" max="65000" placeholder="1000">
+      <div class="sensor-tile full" style="grid-column:1/-1;">
+        <label>💨 Max CO2 (ppm)</label>
+        <input type="number" id="thresh-co2" step="50" min="400" max="40000" placeholder="1000">
       </div>
     </div>
     <button class="btn-save" onclick="saveThresholds()">💾 Save Thresholds</button>
+  </div>
+
+  <!-- Device Log Terminal -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-icon">🖥</span>
+      <span class="card-title">Device Log</span>
+    </div>
+    <div id="terminal" style="background:#020f02;border:1px solid rgba(0,230,118,0.3);border-radius:6px;padding:12px;height:240px;overflow-y:auto;font-family:var(--mono);font-size:0.72rem;color:#00e676;line-height:1.8;text-shadow:0 0 6px rgba(0,230,118,0.4);box-shadow:inset 0 0 20px rgba(0,230,118,0.05);"></div>
+    <button class="btn-wifi" style="margin-top:8px;font-size:0.8rem;padding:8px;" onclick="document.getElementById('terminal').innerHTML='';lastLogSeq=-1;">🗑 Clear</button>
   </div>
 
   <!-- Factory Reset -->
@@ -281,26 +288,24 @@ function loadThresholds() {
     document.getElementById('thresh-temp-low').value = th.temp_low;
     document.getElementById('thresh-hum').value      = th.hum;
     document.getElementById('thresh-hum-low').value  = th.hum_low;
-    document.getElementById('thresh-tvoc').value     = th.tvoc;
-    document.getElementById('thresh-eco2').value     = th.eco2;
+    document.getElementById('thresh-co2').value      = th.co2;
   });
 }
 
 function saveThresholds() {
-  const temp    = parseFloat(document.getElementById("thresh-temp").value);
-  const tempLow = parseFloat(document.getElementById("thresh-temp-low").value);
-  const hum     = parseFloat(document.getElementById("thresh-hum").value);
-  const humLow  = parseFloat(document.getElementById("thresh-hum-low").value);
-  const tvoc    = parseFloat(document.getElementById("thresh-tvoc").value);
-  const eco2    = parseFloat(document.getElementById("thresh-eco2").value);
-  if ([temp, tempLow, hum, humLow, tvoc, eco2].some(isNaN)) { showMsg("Enter valid values for all thresholds", "error"); return; }
-  if (tempLow >= temp) { showMsg("Min Temp must be lower than Max Temp", "error"); return; }
-  if (humLow  >= hum)  { showMsg("Min Humidity must be lower than Max Humidity", "error"); return; }
-  showMsg("Saving thresholds...", "info");
-  fetch("/set_thresh?temp=" + temp + "&temp_low=" + tempLow + "&hum=" + hum + "&hum_low=" + humLow + "&tvoc=" + tvoc + "&eco2=" + eco2)
+  const temp    = parseFloat(document.getElementById('thresh-temp').value);
+  const tempLow = parseFloat(document.getElementById('thresh-temp-low').value);
+  const hum     = parseFloat(document.getElementById('thresh-hum').value);
+  const humLow  = parseFloat(document.getElementById('thresh-hum-low').value);
+  const co2     = parseFloat(document.getElementById('thresh-co2').value);
+  if ([temp, tempLow, hum, humLow, co2].some(isNaN)) { showMsg('Enter valid values for all thresholds', 'error'); return; }
+  if (tempLow >= temp) { showMsg('Min Temp must be lower than Max Temp', 'error'); return; }
+  if (humLow  >= hum)  { showMsg('Min Humidity must be lower than Max Humidity', 'error'); return; }
+  showMsg('Saving thresholds...', 'info');
+  fetch('/set_thresh?temp=' + temp + '&temp_low=' + tempLow + '&hum=' + hum + '&hum_low=' + humLow + '&co2=' + co2)
     .then(r => r.text())
-    .then(() => showMsg("✓ Thresholds saved!", "success"))
-    .catch(() => showMsg("Failed to save", "error"));
+    .then(() => showMsg('✓ Thresholds saved!', 'success'))
+    .catch(() => showMsg('Failed to save', 'error'));
 }
 
 function scanWifi() {
@@ -401,7 +406,7 @@ function pollSensors() {
   fetch('/sensors').then(r => r.json()).then(d => {
     const tempEl = document.getElementById('temp');
     const humEl  = document.getElementById('hum');
-    if (d.shtc3_ok) {
+    if (d.scd40_ok) {
       tempEl.textContent = d.temp.toFixed(1) + ' °C'; tempEl.style.color = '';
       humEl.textContent  = d.hum.toFixed(1)  + ' %';  humEl.style.color  = '';
     } else {
@@ -416,20 +421,17 @@ function pollSensors() {
     } else {
       lightEl.textContent = 'N/A'; lightEl.className = 'sensor-tile-val'; lightEl.style.color = 'var(--muted)';
     }
-    if (d.ens160_ok && d.aqi >= 1) {
-      const aqiEl = document.getElementById('aqi');
-      aqiEl.innerHTML = d.aqi + ' <span style="font-size:0.75rem;color:var(--muted);font-weight:400;">' + (d.aqi_label||'') + '</span>';
-      aqiEl.className = 'sensor-tile-val aqi-' + d.aqi;
-      document.getElementById('tvoc').innerHTML = d.tvoc + ' <span style="font-size:0.7rem;color:var(--muted);">ppb</span>';
-      document.getElementById('eco2').innerHTML = d.eco2 + ' <span style="font-size:0.7rem;color:var(--muted);">ppm</span>';
-      const statusEl = document.getElementById('aqi-status');
-      statusEl.textContent = d.aqi_status || '–';
-      statusEl.style.color = d.aqi_status === 'Normal' ? '#00e676' : 'var(--muted)';
+    const co2El      = document.getElementById('co2');
+    const co2LabelEl = document.getElementById('co2-label');
+    if (d.scd40_ok && d.co2 >= 400) {
+      co2El.innerHTML        = d.co2 + ' <span style="font-size:0.7rem;color:var(--muted);">ppm</span>';
+      co2LabelEl.textContent = d.co2_label || '–';
+      co2LabelEl.style.color = d.co2 < 1000 ? '#00e676' : d.co2 < 1500 ? '#ffd740' : '#ff1744';
     } else {
-      ['aqi','tvoc','eco2','aqi-status'].forEach(id => {
-        const el = document.getElementById(id);
-        el.textContent = 'N/A'; el.className = 'sensor-tile-val'; el.style.color = 'var(--muted)';
-      });
+      co2El.innerHTML        = 'N/A';
+      co2El.style.color      = 'var(--muted)';
+      co2LabelEl.textContent = '–';
+      co2LabelEl.style.color = 'var(--muted)';
     }
   });
 }
@@ -449,11 +451,24 @@ function factoryReset() {
     .catch(() => showMsg('Reset sent — reconnect to the AP hotspot', 'success'));
 }
 
+let lastLogSeq = -1;
+function pollLogs() {
+  fetch('/logs').then(r => r.json()).then(data => {
+    if (data.seq === lastLogSeq) return;
+    lastLogSeq = data.seq;
+    const t = document.getElementById('terminal');
+    t.innerHTML = data.lines.map(l => '<div>' + l.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>').join('');
+    t.scrollTop = t.scrollHeight;
+  }).catch(() => {});
+}
+
 updateStatus();
 loadThresholds();
 pollSensors();
+pollLogs();
 setInterval(pollSensors, 3000);
 setInterval(updateStatus, 5000);
+setInterval(pollLogs, 1000);
 </script>
 </body>
 </html>
@@ -633,8 +648,7 @@ float threshTemp    = 30.0f;
 float threshTempLow =  5.0f;
 float threshHum     = 80.0f;
 float threshHumLow  = 20.0f;
-float threshTvoc    = 500.0f;
-float threshEco2    = 1000.0f;
+float threshCO2     = 1000.0f;
 
 extern float sensorTemp;
 extern float sensorHum;
@@ -686,22 +700,20 @@ static void loadThresholdsFromNVS() {
     threshTempLow = prefs.getFloat("temp_low",   5.0f);
     threshHum     = prefs.getFloat("hum",       80.0f);
     threshHumLow  = prefs.getFloat("hum_low",   20.0f);
-    threshTvoc    = prefs.getFloat("tvoc",     500.0f);
-    threshEco2    = prefs.getFloat("eco2",    1000.0f);
+    threshCO2     = prefs.getFloat("eco2",    1000.0f);
     prefs.end();
-    Serial.printf("[Thresh] Loaded — TempH:%.1f TempL:%.1f HumH:%.1f HumL:%.1f TVOC:%.0f eCO2:%.0f\n",
-                  threshTemp, threshTempLow, threshHum, threshHumLow, threshTvoc, threshEco2);
+    Serial.printf("[Thresh] Loaded — TempH:%.1f TempL:%.1f HumH:%.1f HumL:%.1f CO2:%.0f\n",
+                  threshTemp, threshTempLow, threshHum, threshHumLow, threshCO2);
 }
 
-static void saveThresholdsToNVS(float temp, float tempLow, float hum, float humLow, float tvoc, float eco2) {
+static void saveThresholdsToNVS(float temp, float tempLow, float hum, float humLow, float co2) {
     Preferences prefs;
     prefs.begin(THRESH_NVS_NS, false);
     prefs.putFloat("temp",     temp);
     prefs.putFloat("temp_low", tempLow);
     prefs.putFloat("hum",      hum);
     prefs.putFloat("hum_low",  humLow);
-    prefs.putFloat("tvoc",     tvoc);
-    prefs.putFloat("eco2",     eco2);
+    prefs.putFloat("co2",      co2);
     prefs.end();
 }
 
@@ -835,28 +847,28 @@ static void handleSetToken() {
 
 static void handleSensors() {
     addCorsHeaders();
-    char buf[420];
+    char buf[320];
     snprintf(buf, sizeof(buf),
         "{"
-        "\"temp\":%.1f,\"hum\":%.1f,"
+        "\"temp\":%.1f,"
+        "\"hum\":%.1f,"
+        "\"co2\":%d,"
+        "\"co2_label\":\"%s\","
         "\"alert_temp\":%s,\"alert_temp_num\":%d,"
         "\"alert_hum\":%s,\"alert_hum_num\":%d,"
-        "\"shtc3_ok\":%s,"
-        "\"aqi\":%d,\"aqi_label\":\"%s\","
-        "\"tvoc\":%d,\"eco2\":%d,"
-        "\"aqi_status\":\"%s\","
-        "\"ens160_ok\":%s,"
+        "\"alert_co2\":%s,\"alert_co2_num\":%d,"
+        "\"scd40_ok\":%s,"
         "\"light_on\":%s,\"light_on_num\":%d,"
         "\"ldr_ok\":%s"
         "}",
-        sensorTemp, sensorHum,
-        alertTemp ? "true" : "false", alertTemp ? 1 : 0,
-        alertHum  ? "true" : "false", alertHum  ? 1 : 0,
-        sensorOK  ? "true" : "false",
-        ens160AQI, ens160AQILabel(ens160AQI),
-        ens160TVOC, ens160eCO2,
-        ens160Status.c_str(),
-        ens160OK   ? "true" : "false",
+        sensorTemp,
+        sensorHum,
+        sensorCO2,
+        co2Label(sensorCO2),
+        alertTemp  ? "true" : "false", alertTemp  ? 1 : 0,
+        alertHum   ? "true" : "false", alertHum   ? 1 : 0,
+        alertCO2   ? "true" : "false", alertCO2   ? 1 : 0,
+        sensorOK   ? "true" : "false",
         ldrLightOn ? "true" : "false", ldrLightOnNum(),
         ldrOK      ? "true" : "false"
     );
@@ -870,36 +882,32 @@ static void handleSetThresh() {
     if (server.hasArg("temp_low")) threshTempLow = server.arg("temp_low").toFloat();
     if (server.hasArg("hum"))      threshHum     = server.arg("hum").toFloat();
     if (server.hasArg("hum_low"))  threshHumLow  = server.arg("hum_low").toFloat();
-    if (server.hasArg("tvoc"))     threshTvoc    = server.arg("tvoc").toFloat();
-    if (server.hasArg("eco2"))     threshEco2    = server.arg("eco2").toFloat();
+    if (server.hasArg("co2"))      threshCO2     = server.arg("co2").toFloat();  // lowercase co2
 
-    saveThresholdsToNVS(threshTemp, threshTempLow, threshHum, threshHumLow, threshTvoc, threshEco2);
-    Serial.printf("[Thresh] Saved — TempH:%.1f TempL:%.1f HumH:%.1f HumL:%.1f TVOC:%.0f eCO2:%.0f\n",
-                  threshTemp, threshTempLow, threshHum, threshHumLow, threshTvoc, threshEco2);
+    saveThresholdsToNVS(threshTemp, threshTempLow, threshHum, threshHumLow, threshCO2);
+    Serial.printf("[Thresh] Saved — TempH:%.1f TempL:%.1f HumH:%.1f HumL:%.1f CO2:%.0f\n",
+                  threshTemp, threshTempLow, threshHum, threshHumLow, threshCO2);
 
     alertTemp = (sensorTemp > threshTemp) || (sensorTemp < threshTempLow);
     alertHum  = (sensorHum  > threshHum)  || (sensorHum  < threshHumLow);
+    alertCO2  = (sensorCO2  > threshCO2);
 
     if (localMqttIsConnected()) {
-        localMqttPublishConfig(threshTemp, threshTempLow, threshHum, threshHumLow, 3, threshEco2, threshTvoc);
-    } else {
-        Serial.println("[LocalMQTT] Not connected, config topic not published");
+        localMqttPublishConfig(threshTemp, threshTempLow, threshHum, threshHumLow, threshCO2);
     }
 
-    // ── Fixed: was !WiFi.isConnected() ──
     if (!fromApi && WiFi.isConnected()) {
         String deviceId = getTelemetryDeviceId();
         String apiUrl   = "http://192.168.0.16:8000/api/thresholds/" + deviceId;
 
-        StaticJsonDocument<384> doc;
+        StaticJsonDocument<256> doc;
         doc["device_id"] = deviceId;
         JsonObject thresh = doc.createNestedObject("thresholds");
         thresh["temp_high"] = threshTemp;
         thresh["temp_low"]  = threshTempLow;
         thresh["hum_high"]  = threshHum;
         thresh["hum_low"]   = threshHumLow;
-        thresh["tvoc_high"] = threshTvoc;
-        thresh["co2_high"]  = threshEco2;
+        thresh["co2_high"]  = threshCO2;
 
         String payload;
         serializeJson(doc, payload);
@@ -908,11 +916,8 @@ static void handleSetThresh() {
         http.begin(apiUrl);
         http.addHeader("Content-Type", "application/json");
         int httpCode = http.POST(payload);
-        if (httpCode >= 200 && httpCode < 300) Serial.printf("[Thresh] API update OK (HTTP %d)\n", httpCode);
-        else                                   Serial.printf("[Thresh] API update FAILED (HTTP %d)\n", httpCode);
+        Serial.printf("[Thresh] API update HTTP %d\n", httpCode);
         http.end();
-    } else if (!fromApi) {
-        Serial.println("[Thresh] WiFi not connected — thresholds not sent to API");
     }
 
     if (mqttIsConnected()) mqttPublishAttributes();
@@ -922,8 +927,8 @@ static void handleSetThresh() {
 static void handleGetThresh() {
     char buf[256];
     snprintf(buf, sizeof(buf),
-             "{\"temp\":%.2f,\"temp_low\":%.2f,\"hum\":%.2f,\"hum_low\":%.2f,\"tvoc\":%.0f,\"eco2\":%.0f}",
-             threshTemp, threshTempLow, threshHum, threshHumLow, threshTvoc, threshEco2);
+             "{\"temp\":%.2f,\"temp_low\":%.2f,\"hum\":%.2f,\"hum_low\":%.2f,\"co2\":%.0f}",
+             threshTemp, threshTempLow, threshHum, threshHumLow, threshCO2);
     server.send(200, "application/json", buf);
 }
 
@@ -945,6 +950,22 @@ static void handleFactoryReset() {
 static void handleDiscover() {
     server.sendHeader("Access-Control-Allow-Origin", "*");
     server.send(200, "text/html", DISCOVER_PAGE);
+}
+
+static void handleLogs() {
+    addCorsHeaders();
+    uint32_t count = _logHead < LOG_BUF_SIZE ? _logHead : LOG_BUF_SIZE;
+    uint32_t start = _logHead >= LOG_BUF_SIZE ? _logHead % LOG_BUF_SIZE : 0;
+    String json = "{\"seq\":" + String(_logHead) + ",\"lines\":[";
+    for (uint32_t i = 0; i < count; i++) {
+        if (i > 0) json += ",";
+        String line = _logBuf[(start + i) % LOG_BUF_SIZE];
+        line.replace("\\", "\\\\");
+        line.replace("\"", "\\\"");
+        json += "\"" + line + "\"";
+    }
+    json += "]}";
+    server.send(200, "application/json", json);
 }
 
 static void handleRegister() {
@@ -983,7 +1004,6 @@ static void handleBrokerStatus() {
 }
 
 // ── Server Init — ALL routes registered before server.begin() ─────────────────
-
 void webServerInit() {
     server.on("/",                          handleRoot);
     server.on("/discover",    HTTP_GET,     handleDiscover);
@@ -1011,6 +1031,7 @@ void webServerInit() {
     server.on("/register",      HTTP_POST, handleRegister);
     server.on("/set_broker",    HTTP_POST, handleSetBroker);
     server.on("/broker_status", HTTP_GET,  handleBrokerStatus);
+    server.on("/logs",          HTTP_GET,  handleLogs);
 
     loadThresholdsFromNVS();
     server.begin();

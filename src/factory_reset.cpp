@@ -12,7 +12,7 @@ static bool                _armed       = false; // debounce: button was LOW fir
 
 void factoryResetInit() {
     pinMode(FACTORY_RESET_PIN, INPUT_PULLUP);
-    Serial.printf("[Reset] Factory reset on GPIO%d (hold %lus)\n",
+    Serial.printf("[Reset] Factory reset on GPIO%d (hold %lus) ✓ connected!\n",
                   FACTORY_RESET_PIN, HOLD_MS / 1000);
 }
 

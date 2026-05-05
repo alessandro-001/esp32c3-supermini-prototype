@@ -1,6 +1,7 @@
 #include "ldr.h"
 #include "config.h"
 #include "sensors.h"
+#include "web_server.h"
 #include <Arduino.h>
 
 bool ldrLightOn = false;
@@ -21,9 +22,8 @@ void ldrRead() {
     _lastRead = now;
 
     int raw = analogRead(LDR_PIN);
-    ldrOK = (raw > 0 && raw < 4095); // 0 = floating low, 4095 = floating high = disconnected
-    if (!ldrOK) return;
-
+    ldrOK = true;  // sensor is present — extremes (0/4095) are valid in dark/bright conditions
     ldrLightOn = (raw > LDR_THRESHOLD);
-    //Serial.printf("[LDR] raw=%d  light=%s\n", raw, ldrLightOn ? "ON" : "OFF");
+    Serial.printf("[LDR] raw=%d  light=%s\n", raw, ldrLightOn ? "ON" : "OFF");
+    logPush("[LDR] raw=" + String(raw) + " thr=" + String(LDR_THRESHOLD) + " → " + (ldrLightOn ? "ON" : "OFF"));
 }
