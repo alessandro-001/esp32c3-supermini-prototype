@@ -1,9 +1,9 @@
 #include "wifi_config.h"
 #include <Preferences.h>
 #include <WiFi.h>
+#include <esp_wifi.h>
 #include "config.h"
 #include "web_server.h"
-#include "wifi_config.h"
 #include "secrets.h"
 
 
@@ -95,35 +95,66 @@ const String& wifiConfigSsid() {
 }
 
 /// Connect to saved Wi-Fi, returns true on success
+// bool wifiConfigConnect(uint32_t timeoutMs) {
+//   //if (gSsid.isEmpty()) return false;
+//   if (gSsid.isEmpty()) {
+//         Serial.println("[WiFi] No credentials saved — skipping connect");
+//         return false;
+//     }
+
+//   WiFi.disconnect(false); //disconnect STA if it was previously connected
+//   delay(100);
+//   // WiFi.mode(WIFI_AP_STA);
+//   WiFi.begin(gSsid.c_str(), gPass.c_str());
+
+//   Serial.printf("[WiFi] Connecting to %s", gSsid.c_str());
+//   Serial.printf("[WiFi] Trying SSID: %s, PASS: %s\n", gSsid.c_str(), gPass.c_str());
+
+//   const uint32_t start = millis();
+//   while (WiFi.status() != WL_CONNECTED && (millis() - start) < timeoutMs) {
+//     delay(500);
+//     Serial.print(".");
+//   }
+//   Serial.println();
+
+//   if (WiFi.status() == WL_CONNECTED) {
+//     Serial.printf("[WiFi] Connected! IP: %s\n", WiFi.localIP().toString().c_str());
+//     return true;
+//   }
+
+//   Serial.printf("[WiFi] Connection failed, status: %d\n", WiFi.status());
+//   return false;
+// }
+
 bool wifiConfigConnect(uint32_t timeoutMs) {
-  //if (gSsid.isEmpty()) return false;
-  if (gSsid.isEmpty()) {
+    if (gSsid.isEmpty()) {
         Serial.println("[WiFi] No credentials saved — skipping connect");
         return false;
     }
 
-  WiFi.disconnect(true);  // full disconnect
-  delay(100);
-  WiFi.mode(WIFI_AP_STA);
-  WiFi.begin(gSsid.c_str(), gPass.c_str());
+    WiFi.disconnect(false);  // disconnect STA only — keeps AP running
+    delay(100);
+    WiFi.begin(gSsid.c_str(), gPass.c_str());
 
-  Serial.printf("[WiFi] Connecting to %s", gSsid.c_str());
-  Serial.printf("[WiFi] Trying SSID: %s, PASS: %s\n", gSsid.c_str(), gPass.c_str());
+    Serial.printf("[WiFi] Connecting to %s\n", gSsid.c_str());
 
-  const uint32_t start = millis();
-  while (WiFi.status() != WL_CONNECTED && (millis() - start) < timeoutMs) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println();
+    const uint32_t start = millis();
+    while (WiFi.status() != WL_CONNECTED && (millis() - start) < timeoutMs) {
+        delay(500);
+        Serial.print(".");
+    }
+    Serial.println();
 
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.printf("[WiFi] Connected! IP: %s\n", WiFi.localIP().toString().c_str());
-    return true;
-  }
+    if (WiFi.status() == WL_CONNECTED) {
+        esp_wifi_set_ps(WIFI_PS_NONE);  // disable modem sleep — prevents random disconnects
+        Serial.printf("[WiFi] Connected! IP: %s\n", WiFi.localIP().toString().c_str());
+        logPush("[WiFi] Connected! IP: " + WiFi.localIP().toString());
+        return true;
+    }
 
-  Serial.printf("[WiFi] Connection failed, status: %d\n", WiFi.status());
-  return false;
+    Serial.printf("[WiFi] Connection failed, status: %d\n", WiFi.status());
+    logPush("[WiFi] Failed (status: " + String(WiFi.status()) + ")");
+    return false;
 }
 
 /// Check if WiFi credentials exist in NVS

@@ -9,12 +9,11 @@
 #include "web_server.h"
 #include "provisioning.h"
 #include "mqtt.h"
-#include "cloud/google_sheets.h"
 #include "local_mqtt.h"
 #include "factory_reset.h"
+#include <esp_wifi.h>
 
-//* ESP32C3 Smart Monitor Prototype - MAIN *//
-   
+//* ESP32C3 Smart Monitor — MAIN
 
 // ── NeoPixel ──────────────────────────────────────────────────────────────────
 Adafruit_NeoPixel ring(NUM_LEDS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
@@ -23,7 +22,6 @@ static uint16_t targetHue     = 32768;
 static uint16_t rainbowHue    = 0;
 
 // ── Feature flags ─────────────────────────────────────────────────────────────
-bool googleSheetsEnabled             = true;
 static const bool thingsBoardEnabled = false;
 
 // ── Commissioning ─────────────────────────────────────────────────────────────
@@ -45,9 +43,7 @@ static void setCommissioned() {
     p.end();
 }
 
-void setCommissionedPublic() {
-    setCommissioned();
-}
+void setCommissionedPublic() { setCommissioned(); }
 
 // ── mDNS ─────────────────────────────────────────────────────────────────────
 static void startMDNS() {
@@ -65,10 +61,22 @@ static void startMDNS() {
 
 // ── AP helpers ────────────────────────────────────────────────────────────────
 static void startAP() {
+    WiFi.mode(WIFI_AP_STA);   
+    delay(200); 
     String mac = WiFi.macAddress();
     mac.replace(":", "");
     String apSsid = String(AP_SSID) + "_" + mac.substring(8);
-    WiFi.softAP(apSsid.c_str(), AP_PASSWORD, 1);
+
+    // Must be called BEFORE softAP() to configure DHCP pool correctly
+    WiFi.softAPConfig(
+        IPAddress(192, 168, 4, 1),
+        IPAddress(192, 168, 4, 1),
+        IPAddress(255, 255, 255, 0)
+    );
+    bool ok = WiFi.softAP(apSsid.c_str(), AP_PASSWORD, 6);
+    Serial.printf("[AP] softAP returned: %s\n", ok ? "OK" : "FAILED");
+    esp_wifi_set_ps(WIFI_PS_NONE);
+    delay(500);
     Serial.printf("[AP] Started: %s @ %s\n",
                   apSsid.c_str(), WiFi.softAPIP().toString().c_str());
 }
@@ -106,32 +114,45 @@ void setup() {
     ring.show();
     Serial.println("✓ NeoPixel on GPIO3");
 
-    // factoryResetInit(); // enable when board assembled
+    factoryResetInit();
 
-    shtc3Init();
-    ens160Init();
+    scd40Init();
     ldrInit();
 
-    WiFi.mode(WIFI_AP_STA);
-    startAP();
+    WiFi.persistent(true);
+    WiFi.mode(WIFI_STA);
+    delay(200);
 
     if (deviceIsCommissioned()) {
         wifiConfigBegin(HOME_SSID, HOME_PASSWORD);
         bool ok = wifiConfigConnect(10000);
         if (ok) {
-            stopAP();
             startMDNS();
             localMqttInit();
             Serial.println("[Boot] Restored — device online");
+            logPush("[Boot] WiFi OK — IP: " + WiFi.localIP().toString());
         } else {
+            startAP();
             Serial.println("[Boot] WiFi unavailable — AP visible for reconfiguration");
+            logPush("[Boot] WiFi failed — AP started");
         }
     } else {
         wifiConfigBegin(HOME_SSID, HOME_PASSWORD);
+#ifdef DEV_MODE
+        bool ok = wifiConfigConnect(10000);  // no startAP() before this
+        if (ok) {
+            setCommissionedPublic();
+            startMDNS();
+            localMqttInit();
+            Serial.println("[Boot] DEV_MODE: Auto-commissioned");
+        } else {
+            startAP();  // fallback if even dev credentials fail
+        }
+#else
+        startAP();  // client units — always show AP for provisioning
         Serial.println("[Boot] Not commissioned — waiting for Register Device");
+#endif
     }
-
-    googleSheetsInit();
 
     webServerInit();
     Serial.println("====== Setup complete ======\n");
@@ -140,22 +161,22 @@ void setup() {
 // ── Loop ─────────────────────────────────────────────────────────────────────
 void loop() {
     uint32_t now = millis();
-    delay(1); 
+    delay(1);
 
-    // factoryResetHandle(); // enable when board assembled
+    factoryResetHandle();
 
-    shtc3Read();
-    ens160Read();
+    scd40Read();
     ldrRead();
 
-    static bool warnedSHTC3  = false;
-    static bool warnedENS160 = false;
-    if (!sensorOK  && !warnedSHTC3)  { Serial.println("⚠️ SHTC3 not found — temp/humidity unavailable"); warnedSHTC3  = true; }
-    if (!ens160OK  && !warnedENS160) { Serial.println("⚠️ ENS160 not found — air quality unavailable");  warnedENS160 = true; }
+    static bool warnedSCD40 = false;
+    if (!sensorOK && !warnedSCD40) {
+        Serial.println("⚠️ SCD40 not found — all sensors unavailable");
+        warnedSCD40 = true;
+    }
 
     webServerHandle();
 
-    // ── LED ──────────────────────────────────────────────────────────────────
+    // ── LED ───────────────────────────────────────────────────────────────────
     if (now - lastLedUpdate >= LED_INTERVAL) {
         lastLedUpdate = now;
         if (sensorOK) {
@@ -171,26 +192,7 @@ void loop() {
         ring.show();
     }
 
-    // ── Google Sheets every 60s ───────────────────────────────────────────────
-    static uint32_t lastSheetPublish = 0;
-    if (googleSheetsEnabled && now - lastSheetPublish >= 60000) {
-        lastSheetPublish = now;
-        if (isWiFiConnected()) {
-            String deviceId = "SM_" + WiFi.macAddress().substring(12);
-            deviceId.replace(":", "");
-            String data = "{";
-            data += "\"device\":\"" + deviceId + "\",";
-            data += "\"temp\":"  + String(sensorTemp, 1) + ",";
-            data += "\"hum\":"   + String(sensorHum,  1) + ",";
-            data += "\"aqi\":"   + String(ens160AQI)     + ",";
-            data += "\"tvoc\":"  + String(ens160TVOC)    + ",";
-            data += "\"eco2\":"  + String(ens160eCO2);
-            data += "}";
-            googleSheetsSend(data);
-        }
-    }
-
-    // ── MQTT publish every 5s ────────────────────────────────────────────────
+    // ── MQTT publish every 5s ─────────────────────────────────────────────────
     static uint32_t lastMqttPublish    = 0;
     static uint32_t lastSuccessPublish = 0;
     static bool     sentAttributes     = false;
@@ -211,40 +213,50 @@ void loop() {
 
         localMqttPublish();
 
-        if (localMqttIsConnected()) {
-            lastSuccessPublish = now;
-        }
+        if (localMqttIsConnected()) lastSuccessPublish = now;
     }
 
-    // If no successful publish in 5 minutes, force reconnect
+    // Force reconnect if no publish in 5 minutes
     if (lastSuccessPublish > 0 && (now - lastSuccessPublish > 300000UL)) {
         Serial.println("[MQTT] No publish in 5min — forcing reconnect");
+        logPush("[MQTT] No publish 5min — forcing reconnect");
         localMqttInit();
         lastSuccessPublish = now;
+    }
+
+    // ── Periodic system health ────────────────────────────────────────────────
+    static uint32_t lastHealthLog = 0;
+    if (now - lastHealthLog >= 30000) {
+        lastHealthLog = now;
+        logPush("[Sys] heap=" + String(ESP.getFreeHeap()) +
+                " up=" + String(now / 1000) + "s" +
+                " wifi=" + String(WiFi.status() == WL_CONNECTED ? "OK" : "X") +
+                " mqtt=" + String(localMqttIsConnected() ? "OK" : "X"));
     }
 
     // ── AP fallback + STA retry ───────────────────────────────────────────────
     static uint32_t wifiLostAt   = 0;
     static bool     apReEnabled  = false;
     static uint32_t lastStaRetry = 0;
-    static const uint32_t AP_FALLBACK_MS  = 30000;
-    static const uint32_t STA_RETRY_MS    = 60000; // retry STA every 60s
+    static const uint32_t AP_FALLBACK_MS = 30000;
+    static const uint32_t STA_RETRY_MS   = 60000;
 
     if (WiFi.status() != WL_CONNECTED) {
-        if (wifiLostAt == 0) wifiLostAt = now;
-
-        // Re-enable AP after 30s so user can reconfigure if needed
-        if (!apReEnabled && (now - wifiLostAt > AP_FALLBACK_MS)) {
+        if (wifiLostAt == 0) {
+            wifiLostAt = now;
+            logPush("[WiFi] Lost connection (status=" + String(WiFi.status()) + ")");
+        }
+        if (!apReEnabled && deviceIsCommissioned() && (now - wifiLostAt > AP_FALLBACK_MS)) {
             Serial.println("[WiFi] Lost for 30s — re-enabling AP");
+            logPush("[WiFi] Lost 30s — AP re-enabled");
             startAP();
             apReEnabled = true;
         }
-
-        // Keep retrying STA connection every 60s — don't give up
         if (deviceIsCommissioned() && wifiConfigHasCredentials()
             && (now - lastStaRetry > STA_RETRY_MS)) {
             lastStaRetry = now;
             Serial.println("[WiFi] Retrying STA connection...");
+            logPush("[WiFi] Retry attempt...");
             bool ok = wifiConfigConnect(10000);
             if (ok) {
                 stopAP();
@@ -252,6 +264,9 @@ void loop() {
                 apReEnabled = false;
                 wifiLostAt  = 0;
                 Serial.println("[WiFi] Reconnected!");
+                logPush("[WiFi] Reconnected! IP: " + WiFi.localIP().toString());
+            } else {
+                logPush("[WiFi] Retry failed (status=" + String(WiFi.status()) + ")");
             }
         }
     } else {
@@ -260,7 +275,7 @@ void loop() {
         lastStaRetry = 0;
     }
 
-    // ── Service handles ──────────────────────────────────────────────────────
+    // ── Service handles ───────────────────────────────────────────────────────
     if (thingsBoardEnabled) {
         provisioningHandle();
         mqttHandle();
