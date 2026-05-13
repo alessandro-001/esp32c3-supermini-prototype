@@ -200,7 +200,6 @@ void loop() {
 
     // ── MQTT publish every 5s ─────────────────────────────────────────────────
     static uint32_t lastMqttPublish    = 0;
-    static uint32_t lastSuccessPublish = 0;
     static bool     sentAttributes     = false;
     static bool     wasConnected       = false;
 
@@ -218,16 +217,6 @@ void loop() {
         }
 
         localMqttPublish();
-
-        if (localMqttIsConnected()) lastSuccessPublish = now;
-    }
-
-    // Force reconnect if no publish in 5 minutes
-    if (lastSuccessPublish > 0 && (now - lastSuccessPublish > 300000UL)) {
-        Serial.println("[MQTT] No publish in 5min — forcing reconnect");
-        logPush("[MQTT] No publish 5min — forcing reconnect");
-        localMqttInit();
-        lastSuccessPublish = now;
     }
 
     // ── Periodic system health ────────────────────────────────────────────────
@@ -240,37 +229,42 @@ void loop() {
                 " mqtt=" + String(localMqttIsConnected() ? "OK" : "X"));
     }
 
-    // ── AP fallback + STA retry ───────────────────────────────────────────────
+    // ── AP fallback + STA retry ───────────────────────────────────────────────────
     static uint32_t wifiLostAt   = 0;
     static bool     apReEnabled  = false;
     static uint32_t lastStaRetry = 0;
     static const uint32_t AP_FALLBACK_MS = 30000;
-    static const uint32_t STA_RETRY_MS   = 60000;
+    static const uint32_t STA_RETRY_MS   = 120000;  // retry every 2min not 1min
 
     if (WiFi.status() != WL_CONNECTED) {
         if (wifiLostAt == 0) {
             wifiLostAt = now;
             logPush("[WiFi] Lost connection (status=" + String(WiFi.status()) + ")");
         }
+
+        // Re-enable AP after 30s
         if (!apReEnabled && deviceIsCommissioned() && (now - wifiLostAt > AP_FALLBACK_MS)) {
             Serial.println("[WiFi] Lost for 30s — re-enabling AP");
             logPush("[WiFi] Lost 30s — AP re-enabled");
             startAP();
             apReEnabled = true;
         }
+
+        // Only retry STA if MQTT is not mid-publish and enough time has passed
         if (deviceIsCommissioned() && wifiConfigHasCredentials()
-            && (now - lastStaRetry > STA_RETRY_MS)) {
+            && (now - lastStaRetry > STA_RETRY_MS)
+            && !localMqttIsConnected()) {  // ← don't retry if MQTT is active
             lastStaRetry = now;
             Serial.println("[WiFi] Retrying STA connection...");
             logPush("[WiFi] Retry attempt...");
             bool ok = wifiConfigConnect(10000);
             if (ok) {
-                stopAP();
+                if (apReEnabled) { stopAP(); apReEnabled = false; }
                 startMDNS();
-                apReEnabled = false;
-                wifiLostAt  = 0;
+                wifiLostAt = 0;
                 Serial.println("[WiFi] Reconnected!");
                 logPush("[WiFi] Reconnected! IP: " + WiFi.localIP().toString());
+                localMqttInit();  // reconnect MQTT after WiFi restored
             } else {
                 logPush("[WiFi] Retry failed (status=" + String(WiFi.status()) + ")");
             }

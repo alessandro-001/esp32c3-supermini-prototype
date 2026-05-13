@@ -64,9 +64,8 @@ void localMqttInit() {
     uint16_t port = localMqttGetBrokerPort();
     localMqtt.setServer(ip.c_str(), port);
     localMqtt.setBufferSize(512);
-    localMqtt.setKeepAlive(30);
-    localMqtt.setSocketTimeout(10);
-    //delay(500); 
+    localMqtt.setKeepAlive(60);
+    localMqtt.setSocketTimeout(15);
     localMqttConnect();
     Serial.printf("[LocalMQTT] Initialised → %s:%u\n", ip.c_str(), port);
 }
@@ -79,8 +78,8 @@ void localMqttHandle() {
             lastReconnect = millis();
             Serial.println("[LocalMQTT] Connection lost — reconnecting...");
             logPush("[LocalMQTT] Lost (rc=" + String(localMqtt.state()) + ") — reconnecting...");
-            localMqtt.disconnect();
-            delay(100);
+            // localMqtt.disconnect();
+            // delay(100);
             localMqttConnect();
         }
     }
