@@ -115,41 +115,47 @@ void setup() {
     Serial.println("✓ NeoPixel on GPIO3");
 
     factoryResetInit();
-
     scd40Init();
     ldrInit();
 
-    WiFi.persistent(true);
-    WiFi.mode(WIFI_STA);
-    delay(200);
+    // ── Radio init: AP first, always ─────────────────────────────────────────
+    WiFi.persistent(false);
+    WiFi.disconnect(true);
+    delay(100);
+    WiFi.mode(WIFI_AP_STA);
+    delay(300);
+    startAP();          // AP up before any STA attempt
+    delay(500);
+
+    wifiConfigBegin(HOME_SSID, HOME_PASSWORD);
 
     if (deviceIsCommissioned()) {
-        wifiConfigBegin(HOME_SSID, HOME_PASSWORD);
-        bool ok = wifiConfigConnect(10000);
+        bool ok = wifiConfigConnect(15000);
         if (ok) {
+            stopAP();
             startMDNS();
             localMqttInit();
             Serial.println("[Boot] Restored — device online");
             logPush("[Boot] WiFi OK — IP: " + WiFi.localIP().toString());
         } else {
-            startAP();
+            // AP already running — just log it
             Serial.println("[Boot] WiFi unavailable — AP visible for reconfiguration");
-            logPush("[Boot] WiFi failed — AP started");
+            logPush("[Boot] WiFi failed — AP staying on");
         }
     } else {
-        wifiConfigBegin(HOME_SSID, HOME_PASSWORD);
 #ifdef DEV_MODE
-        bool ok = wifiConfigConnect(10000);  // no startAP() before this
+        bool ok = wifiConfigConnect(15000);
         if (ok) {
             setCommissionedPublic();
+            stopAP();
             startMDNS();
             localMqttInit();
             Serial.println("[Boot] DEV_MODE: Auto-commissioned");
+            logPush("[Boot] DEV_MODE online");
         } else {
-            startAP();  // fallback if even dev credentials fail
+            Serial.println("[Boot] DEV_MODE: WiFi failed — AP on");
         }
 #else
-        startAP();  // client units — always show AP for provisioning
         Serial.println("[Boot] Not commissioned — waiting for Register Device");
 #endif
     }
