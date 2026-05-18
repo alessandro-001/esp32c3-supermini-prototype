@@ -17,7 +17,7 @@ static String getDeviceId() {
 
 static void localMqttConnect() {
     if (WiFi.status() != WL_CONNECTED) return;
-    if (localMqtt.connected()) return;
+    if (localMqtt.connected()) return; 
 
     String clientId = "IESWIC3A-" + WiFi.macAddress();
     clientId.replace(":", "");
@@ -78,8 +78,6 @@ void localMqttHandle() {
             lastReconnect = millis();
             Serial.println("[LocalMQTT] Connection lost — reconnecting...");
             logPush("[LocalMQTT] Lost (rc=" + String(localMqtt.state()) + ") — reconnecting...");
-            // localMqtt.disconnect();
-            // delay(100);
             localMqttConnect();
         }
     }
