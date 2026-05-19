@@ -79,6 +79,10 @@ static void startAP() {
     delay(500);
     Serial.printf("[AP] Started: %s @ %s\n",
                   apSsid.c_str(), WiFi.softAPIP().toString().c_str());
+                  
+    Serial.printf("[AP] Station count: %d\n", WiFi.softAPgetStationNum());
+    Serial.printf("[AP] AP MAC: %s\n", WiFi.softAPmacAddress().c_str());
+    Serial.printf("[AP] SSID visible: %s\n", WiFi.softAPSSID().c_str());
 }
 
 static void stopAP() {
