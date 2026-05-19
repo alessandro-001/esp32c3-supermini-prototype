@@ -10,14 +10,57 @@
 
 static WiFiClient   localWifiClient;
 static PubSubClient localMqtt(localWifiClient);
+static uint8_t      gSensorType = SENSOR_TYPE_DEFAULT;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 static String getDeviceId() {
     return "IESWIC3A_" + WiFi.macAddress().substring(12);
 }
 
+static String buildTopic() {
+    return "IESWIC3A/" + String(gSensorType) + "/data";
+}
+
+static const char* sensorTypeLabel(uint8_t type) {
+    switch (type) {
+        case 1:  return "environment";
+        case 2:  return "soil";
+        case 3:  return "mineral";
+        default: return "environment";
+    }
+}
+
+// ── Sensor Type NVS ──────────────────────────────────────────────────────────
+
+void localMqttSetSensorType(uint8_t type) {
+    if (type < 1 || type > 3) type = SENSOR_TYPE_DEFAULT;
+    gSensorType = type;
+    Preferences p;
+    p.begin("device", false);
+    p.putUChar("sensor_type", type);
+    p.end();
+    Serial.printf("[LocalMQTT] Sensor type set → %d (%s)\n", type, sensorTypeLabel(type));
+}
+
+uint8_t localMqttGetSensorType() {
+    return gSensorType;
+}
+
+static void loadSensorType() {
+    Preferences p;
+    p.begin("device", true);
+    gSensorType = p.getUChar("sensor_type", SENSOR_TYPE_DEFAULT);
+    p.end();
+    if (gSensorType < 1 || gSensorType > 3) gSensorType = SENSOR_TYPE_DEFAULT;
+    Serial.printf("[LocalMQTT] Sensor type loaded → %d (%s)\n", gSensorType, sensorTypeLabel(gSensorType));
+}
+
+// ── Connection ────────────────────────────────────────────────────────────────
+
 static void localMqttConnect() {
     if (WiFi.status() != WL_CONNECTED) return;
-    if (localMqtt.connected()) return; 
+    if (localMqtt.connected()) return;
 
     String clientId = "IESWIC3A-" + WiFi.macAddress();
     clientId.replace(":", "");
@@ -25,7 +68,7 @@ static void localMqttConnect() {
     Serial.print("[LocalMQTT] Connecting...");
     if (localMqtt.connect(clientId.c_str())) {
         Serial.println(" connected!");
-        logPush("[LocalMQTT] connected!");
+        logPush("[LocalMQTT] connected! topic=" + buildTopic());
     } else {
         Serial.printf(" failed (rc=%d)\n", localMqtt.state());
         logPush("[LocalMQTT] failed (rc=" + String(localMqtt.state()) + ")");
@@ -60,6 +103,7 @@ uint16_t localMqttGetBrokerPort() {
 }
 
 void localMqttInit() {
+    loadSensorType();
     String   ip   = localMqttGetBrokerIP();
     uint16_t port = localMqttGetBrokerPort();
     localMqtt.setServer(ip.c_str(), port);
@@ -67,11 +111,12 @@ void localMqttInit() {
     localMqtt.setKeepAlive(60);
     localMqtt.setSocketTimeout(15);
     localMqttConnect();
-    Serial.printf("[LocalMQTT] Initialised → %s:%u\n", ip.c_str(), port);
+    Serial.printf("[LocalMQTT] Initialised → %s:%u  topic=%s\n",
+                  ip.c_str(), port, buildTopic().c_str());
 }
 
 void localMqttHandle() {
-    if (WiFi.status() != WL_CONNECTED) return;  
+    if (WiFi.status() != WL_CONNECTED) return;
     if (!localMqtt.loop()) {
         static unsigned long lastReconnect = 0;
         if (millis() - lastReconnect > 5000) {
@@ -87,16 +132,21 @@ bool localMqttIsConnected() {
     return localMqtt.connected();
 }
 
+// ── Publish ───────────────────────────────────────────────────────────────────
+
 void localMqttPublish() {
     if (!localMqtt.connected()) return;
 
     String deviceId = getDeviceId();
+    String topic    = buildTopic();
 
-    char payload[512];
+    char payload[576];
     if (sensorCO2 == 0) {
         snprintf(payload, sizeof(payload),
             "{"
             "\"device_id\":\"%s\","
+            "\"sensor_type\":%d,"
+            "\"sensor_type_label\":\"%s\","
             "\"firmware\":\"%s\","
             "\"rssi\":%d,"
             "\"temperature\":%.2f,"
@@ -108,7 +158,9 @@ void localMqttPublish() {
             "\"alert_co2\":false,\"alert_co2_num\":0,"
             "\"light_on\":%s,\"light_on_num\":%d"
             "}",
-            deviceId.c_str(), FIRMWARE_VERSION, WiFi.RSSI(),
+            deviceId.c_str(),
+            gSensorType, sensorTypeLabel(gSensorType),
+            FIRMWARE_VERSION, WiFi.RSSI(),
             sensorTemp, sensorHum,
             alertTemp ? "true" : "false", alertTemp ? 1 : 0,
             alertHum  ? "true" : "false", alertHum  ? 1 : 0,
@@ -118,6 +170,8 @@ void localMqttPublish() {
         snprintf(payload, sizeof(payload),
             "{"
             "\"device_id\":\"%s\","
+            "\"sensor_type\":%d,"
+            "\"sensor_type_label\":\"%s\","
             "\"firmware\":\"%s\","
             "\"rssi\":%d,"
             "\"temperature\":%.2f,"
@@ -129,7 +183,9 @@ void localMqttPublish() {
             "\"alert_co2\":%s,\"alert_co2_num\":%d,"
             "\"light_on\":%s,\"light_on_num\":%d"
             "}",
-            deviceId.c_str(), FIRMWARE_VERSION, WiFi.RSSI(),
+            deviceId.c_str(),
+            gSensorType, sensorTypeLabel(gSensorType),
+            FIRMWARE_VERSION, WiFi.RSSI(),
             sensorTemp, sensorHum,
             sensorCO2, co2Label(sensorCO2),
             alertTemp ? "true" : "false", alertTemp ? 1 : 0,
@@ -139,9 +195,12 @@ void localMqttPublish() {
         );
     }
 
-    localMqtt.publish(LOCAL_MQTT_TOPIC, payload);
-    Serial.printf("[LocalMQTT] Published: %s\n", payload);
-    logPush("[LocalMQTT] Published T:" + String(sensorTemp,1) + " H:" + String(sensorHum,1) + " CO2:" + String(sensorCO2));
+    localMqtt.publish(topic.c_str(), payload);
+    Serial.printf("[LocalMQTT] Published to %s: %s\n", topic.c_str(), payload);
+    logPush("[LocalMQTT] T:" + String(sensorTemp,1) +
+            " H:" + String(sensorHum,1) +
+            " CO2:" + String(sensorCO2) +
+            " type:" + String(gSensorType));
 }
 
 void localMqttPublishConfig(float tempHigh, float tempLow,
@@ -156,6 +215,7 @@ void localMqttPublishConfig(float tempHigh, float tempLow,
     snprintf(payload, sizeof(payload),
         "{"
         "\"device_id\":\"%s\","
+        "\"sensor_type\":%d,"
         "\"temp_high\":%.2f,"
         "\"temp_low\":%.2f,"
         "\"hum_high\":%.2f,"
@@ -163,10 +223,9 @@ void localMqttPublishConfig(float tempHigh, float tempLow,
         "\"co2_high\":%.0f"
         "}",
         deviceId.c_str(),
-        tempHigh,
-        tempLow,
-        humHigh,
-        humLow,
+        gSensorType,
+        tempHigh, tempLow,
+        humHigh,  humLow,
         co2High
     );
 
