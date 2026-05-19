@@ -13,9 +13,10 @@
 #define I2C_SDA             7
 #define I2C_SCL             6
 
-// LDR — disabled: GPIO0 strapping pin conflict, hw rev needed to move to GPIO1/2
+// LDR — GPIO0 with 1kΩ pull-down (102 resistor)
+// Low threshold due to strong pull-down + strapping pin behaviour
 #define LDR_PIN             0
-#define LDR_THRESHOLD       50 
+#define LDR_THRESHOLD       50
 #define LDR_ENABLED         1
 
 #define FACTORY_RESET_PIN   4
@@ -37,10 +38,15 @@
 #define DEVICE_GROUP        "PROTO_BF_DEVICES"
 #define FIRMWARE_VERSION    "1.0.0"
 
+//! ── Sensor Type ──────────────────────────────────────────────────────────────
+// 1 = environment, 2 = soil, 3 = mineral
+// Stored in NVS, selected in web UI during first registration
+#define SENSOR_TYPE_DEFAULT 1
+
 //! ── Local MQTT (Raspberry Pi / Docker) ──────────────────────────────────────
 #define LOCAL_MQTT_SERVER   "192.168.0.16"
 #define LOCAL_MQTT_PORT     1883
-#define LOCAL_MQTT_TOPIC    "IESWIC3A/data"
+// Topic is dynamic: IESWIC3A/{sensor_type}/data — built at runtime in local_mqtt.cpp
 
 //! ── mDNS ─────────────────────────────────────────────────────────────────────
 #define MDNS_PREFIX         "bossfarm"

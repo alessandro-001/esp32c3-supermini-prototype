@@ -159,6 +159,19 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
       <span class="row-label">Signal</span>
       <span class="val" id="device-rssi">–</span>
     </div>
+    <div id="sensor-type-commissioned" class="row hidden">
+      <span class="row-label">Sensor Type</span>
+      <span class="val" id="sensor-type-badge">–</span>
+    </div>
+    <div id="sensor-type-selector" class="row hidden" style="margin-top:8px;flex-direction:column;align-items:flex-start;">
+      <label style="margin-bottom:8px;">Select sensor type for this unit</label>
+      <div style="display:flex;gap:8px;width:100%;margin-bottom:8px;">
+        <button class="btn-wifi" style="flex:1;margin-top:0;" onclick="setSensorType(1)">Environment</button>
+        <button class="btn-wifi" style="flex:1;margin-top:0;" onclick="setSensorType(2)">Soil</button>
+        <button class="btn-wifi" style="flex:1;margin-top:0;" onclick="setSensorType(3)">Mineral</button>
+      </div>
+      <div id="sensor-type-selected" style="font-family:var(--mono);font-size:0.8rem;color:var(--muted);">None selected</div>
+    </div>
     <div class="row">
       <span class="row-label">Network Status</span>
       <span id="device-status"><span class="badge waiting">Checking...</span></span>
@@ -399,6 +412,15 @@ function updateStatus() {
     } else {
       statusEl.innerHTML = '<span class="badge offline">● Offline</span>';
     }
+
+    loadSensorType();
+    if (info.commissioned) {
+      document.getElementById('sensor-type-commissioned').classList.remove('hidden');
+      document.getElementById('sensor-type-selector').classList.add('hidden');
+    } else {
+      document.getElementById('sensor-type-commissioned').classList.add('hidden');
+      document.getElementById('sensor-type-selector').classList.remove('hidden');
+    }
   }).catch(() => {});
 }
 
@@ -462,7 +484,35 @@ function pollLogs() {
   }).catch(() => {});
 }
 
+const SENSOR_LABELS = { 1: 'Environment', 2: 'Soil', 3: 'Mineral' };
+
+function loadSensorType() {
+  fetch('/get_sensor_type').then(r => r.json()).then(d => {
+    const label = SENSOR_LABELS[d.sensor_type] || '–';
+    document.getElementById('sensor-type-badge').textContent = label;
+  }).catch(() => {});
+}
+
+function setSensorType(type) {
+  fetch('/set_sensor_type', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'type=' + type
+  })
+  .then(r => r.json())
+  .then(res => {
+    if (res.status === 'ok') {
+      document.getElementById('sensor-type-selected').textContent =
+        '✓ Set to ' + (SENSOR_LABELS[type] || type);
+      document.getElementById('sensor-type-selected').style.color = 'var(--green)';
+      showMsg('✓ Sensor type saved', 'success');
+    }
+  })
+  .catch(() => showMsg('Failed to set sensor type', 'error'));
+}
+
 updateStatus();
+loadSensorType();
 loadThresholds();
 pollSensors();
 pollLogs();
@@ -1003,6 +1053,31 @@ static void handleBrokerStatus() {
     server.send(200, "application/json", buf);
 }
 
+// Sensor type for UI display purposes (1=environment, 2=soil, 3=mineral)
+static void handleGetSensorType() {
+    uint8_t t = localMqttGetSensorType();
+    char buf[80];
+    const char* labels[] = { "", "environment", "soil", "mineral" };
+    snprintf(buf, sizeof(buf),
+             "{\"sensor_type\":%d,\"label\":\"%s\"}",
+             t, (t >= 1 && t <= 3) ? labels[t] : "environment");
+    server.send(200, "application/json", buf);
+}
+
+static void handleSetSensorType() {
+    if (!server.hasArg("type")) {
+        server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Missing type\"}");
+        return;
+    }
+    uint8_t t = (uint8_t)server.arg("type").toInt();
+    if (t < 1 || t > 3) {
+        server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"type must be 1, 2 or 3\"}");
+        return;
+    }
+    localMqttSetSensorType(t);
+    server.send(200, "application/json", "{\"status\":\"ok\"}");
+}
+
 // ── Server Init — ALL routes registered before server.begin() ─────────────────
 void webServerInit() {
     server.on("/",                          handleRoot);
@@ -1031,6 +1106,8 @@ void webServerInit() {
     server.on("/register",      HTTP_POST, handleRegister);
     server.on("/set_broker",    HTTP_POST, handleSetBroker);
     server.on("/broker_status", HTTP_GET,  handleBrokerStatus);
+    server.on("/get_sensor_type", HTTP_GET,  handleGetSensorType);
+    server.on("/set_sensor_type", HTTP_POST, handleSetSensorType);
     server.on("/logs",          HTTP_GET,  handleLogs);
 
     loadThresholdsFromNVS();
