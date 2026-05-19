@@ -2,48 +2,45 @@
 
 #include "secrets.h"
 
-//! ── Access Point ────────────────────────────────────────────────────────────────────────────────────────────
-#define AP_SSID             "ESP32C3_Hotspot"  //* http://192.168.4.1
+//! ── Access Point ─────────────────────────────────────────────────────────────
+#define AP_SSID             "ESP32C3_Hotspot"
 
-//! ── Hardware Pins ESP32-C3 ───────────────────────────────────────────────────────────────────────────────────────────
-// NeoPixel RGB ring (WS2812B)
+//! ── Hardware Pins ESP32-C3 ───────────────────────────────────────────────────
 #define NEOPIXEL_PIN        3
 #define NUM_LEDS            12
-#define BRIGHTNESS          80  // RGB brightness (0-255)
+#define BRIGHTNESS          10
 
-// I2C — SHTC3 & ENS160 Temperature & Humidity + Air Quality (shared bus) now SCD40 only
-#define I2C_SDA             7   // mine is 8 // Hin is 7
-#define I2C_SCL             6   // mine is 9 // Hin is 6
+#define I2C_SDA             7
+#define I2C_SCL             6
 
-// LDR — Light Detection
-#define LDR_PIN         0     // mine is 2 // Hin is 0
-#define LDR_THRESHOLD   2900  // above = light ON, adjust to environment
+// LDR — disabled: GPIO0 strapping pin conflict, hw rev needed to move to GPIO1/2
+#define LDR_PIN             0
+#define LDR_THRESHOLD       50 
+#define LDR_ENABLED         1
 
-// Factory Reset button — active LOW (internal pullup)
-#define FACTORY_RESET_PIN   4       // GPIO4 — SMD button to GND
+#define FACTORY_RESET_PIN   4
 
-//! ── Sensor & LED Timing ─────────────────────────────────────────────────────────────────────────────────────
-#define SENSOR_INTERVAL     2000    // Sensor read interval (ms)
-#define LED_INTERVAL        20      // LED animation update interval (ms)
+//! ── Sensor & LED Timing ──────────────────────────────────────────────────────
+#define SENSOR_INTERVAL     2000
+#define LED_INTERVAL        20
 
-//! ── Temperature Range ───────────────────────────────────────────────────────────────────────────────────────
-#define TEMP_MIN            15.0f   // Minimum expected temperature (°C) for color mapping
-#define TEMP_MAX            35.0f   // Maximum expected temperature (°C) for color mapping
+//! ── Temperature Range ────────────────────────────────────────────────────────
+#define TEMP_MIN            15.0f
+#define TEMP_MAX            35.0f
 
-//! ── ThingsBoard API ─────────────────────────────────────────────────────────────────────────────────────────
-#define TB_SERVER     "mqtt.thingsboard.cloud"          // ThingsBoard MQTT broker
-#define TB_PORT       1883                              // MQTT port
-#define TB_HTTP_HOST  "https://thingsboard.cloud"       // for provisioning HTTP
+//! ── ThingsBoard API ──────────────────────────────────────────────────────────
+#define TB_SERVER           "mqtt.thingsboard.cloud"
+#define TB_PORT             1883
+#define TB_HTTP_HOST        "https://thingsboard.cloud"
 
-//! ── Device Identity ─────────────────────────────────────────────────────────────────────────────────────────
-#define DEVICE_GROUP        "PROTO_BF_DEVICES"          // Device group for ThingsBoard provisioning
-#define FIRMWARE_VERSION    "1.0.0"                     // Firmware version for ThingsBoard provisioning
+//! ── Device Identity ──────────────────────────────────────────────────────────
+#define DEVICE_GROUP        "PROTO_BF_DEVICES"
+#define FIRMWARE_VERSION    "1.0.0"
 
-//! ── Local MQTT (Raspberry Pi / Docker) ─────────────────────────────────────
-#define LOCAL_MQTT_SERVER   "192.168.0.16"             // Pi's static IP .16 //or my macbook .240
-#define LOCAL_MQTT_PORT     1883                        // MQTT port
-#define LOCAL_MQTT_TOPIC    "IESWIC3A/data"             // Topic for local MQTT (e.g., for Node-RED)
+//! ── Local MQTT (Raspberry Pi / Docker) ──────────────────────────────────────
+#define LOCAL_MQTT_SERVER   "192.168.0.16"
+#define LOCAL_MQTT_PORT     1883
+#define LOCAL_MQTT_TOPIC    "IESWIC3A/data"
 
 //! ── mDNS ─────────────────────────────────────────────────────────────────────
 #define MDNS_PREFIX         "bossfarm"
-

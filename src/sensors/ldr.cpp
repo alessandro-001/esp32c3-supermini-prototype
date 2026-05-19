@@ -2,17 +2,21 @@
 #include "config.h"
 #include "sensors.h"
 #include "web_server.h"
+#include "driver/gpio.h"
 #include <Arduino.h>
 
 bool ldrLightOn = false;
 bool ldrOK      = false;
 static uint32_t _lastRead = 0;
 
-//* LDR — Light Detection Sensor
-
 void ldrInit() {
-    pinMode(LDR_PIN, INPUT);
-    ldrOK = false; // will be set on first valid read
+    gpio_reset_pin((gpio_num_t)LDR_PIN);
+    gpio_set_direction((gpio_num_t)LDR_PIN, GPIO_MODE_INPUT);
+    gpio_set_pull_mode((gpio_num_t)LDR_PIN, GPIO_PULLDOWN_ONLY);
+    analogSetPinAttenuation(LDR_PIN, ADC_11db);
+    delay(100);
+    for (int i = 0; i < 5; i++) { analogRead(LDR_PIN); delay(5); }
+    ldrOK = false;
     Serial.printf("✓ LDR on GPIO%d\n", LDR_PIN);
 }
 
@@ -21,9 +25,31 @@ void ldrRead() {
     if (now - _lastRead < SENSOR_INTERVAL) return;
     _lastRead = now;
 
-    int raw = analogRead(LDR_PIN);
-    ldrOK = true;  // sensor is present — extremes (0/4095) are valid in dark/bright conditions
-    ldrLightOn = (raw > LDR_THRESHOLD);
-    Serial.printf("[LDR] raw=%d  light=%s\n", raw, ldrLightOn ? "ON" : "OFF");
-    logPush("[LDR] raw=" + String(raw) + " thr=" + String(LDR_THRESHOLD) + " → " + (ldrLightOn ? "ON" : "OFF"));
+    int samples[5];
+    for (int i = 0; i < 5; i++) {
+        samples[i] = analogRead(LDR_PIN);
+        delay(5);
+    }
+
+    int minVal     = 4095;
+    int validCount = 0;
+    for (int i = 0; i < 5; i++) {
+        if (samples[i] < 4090) {
+            if (samples[i] < minVal) minVal = samples[i];
+            validCount++;
+        }
+    }
+
+    if (validCount == 0) {
+        // strapping spike — hold previous reading silently
+        Serial.printf("[LDR] holding previous → light=%s\n", ldrLightOn ? "ON" : "OFF");
+        return;
+    }
+
+    ldrOK      = true;
+    ldrLightOn = (minVal > LDR_THRESHOLD);  // high value = lit, low value = dark
+    Serial.printf("[LDR] min=%d  valid=%d/5  thr=%d  light=%s\n",
+                  minVal, validCount, LDR_THRESHOLD, ldrLightOn ? "ON" : "OFF");
+    logPush("[LDR] min=" + String(minVal) + " thr=" + String(LDR_THRESHOLD) +
+            " → " + (ldrLightOn ? "ON" : "OFF"));
 }

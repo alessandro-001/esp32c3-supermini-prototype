@@ -176,7 +176,16 @@ void loop() {
     factoryResetHandle();
 
     scd40Read();
-    ldrRead();
+
+    // ── LDR read with LED off to avoid interference ───────────────────────────
+    static uint32_t lastLdrCheck = 0;
+    if (now - lastLdrCheck >= SENSOR_INTERVAL) {
+        lastLdrCheck = now;
+        ring.clear();
+        ring.show();
+        delay(20);      // let LED light decay before ADC read
+        ldrRead();      // ldrRead() has its own interval guard but we gate it here too
+    }
 
     static bool warnedSCD40 = false;
     if (!sensorOK && !warnedSCD40) {
