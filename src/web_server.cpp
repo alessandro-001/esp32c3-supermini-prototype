@@ -426,36 +426,66 @@ function updateStatus() {
 
 function pollSensors() {
   fetch('/sensors').then(r => r.json()).then(d => {
-    const tempEl = document.getElementById('temp');
-    const humEl  = document.getElementById('hum');
-    if (d.scd40_ok) {
-      tempEl.textContent = d.temp.toFixed(1) + ' °C'; tempEl.style.color = '';
-      humEl.textContent  = d.hum.toFixed(1)  + ' %';  humEl.style.color  = '';
+    const tempEl      = document.getElementById('temp');
+    const humEl       = document.getElementById('hum');
+    const lightEl     = document.getElementById('light');
+    const co2El       = document.getElementById('co2');
+    const co2LabelEl  = document.getElementById('co2-label');
+
+    // Temperature
+    if (d.temp != null) {
+      tempEl.textContent = d.temp.toFixed(1);
+      tempEl.style.color = '';
     } else {
-      tempEl.textContent = 'N/A'; tempEl.style.color = 'var(--muted)';
-      humEl.textContent  = 'N/A'; humEl.style.color  = 'var(--muted)';
+      tempEl.textContent = '–';
+      tempEl.style.color = 'var(--muted)';
     }
-    const lightEl = document.getElementById('light');
+
+    // Humidity
+    if (d.hum != null) {
+      humEl.textContent = d.hum.toFixed(1);
+      humEl.style.color = '';
+    } else {
+      humEl.textContent = '–';
+      humEl.style.color = 'var(--muted)';
+    }
+
+    // Light / LDR
     if (d.ldr_ok) {
       lightEl.textContent = d.light_on ? 'ON' : 'OFF';
       lightEl.className = 'sensor-tile-val ' + (d.light_on ? 'light-on' : 'light-off');
       lightEl.style.color = '';
     } else {
-      lightEl.textContent = 'N/A'; lightEl.className = 'sensor-tile-val'; lightEl.style.color = 'var(--muted)';
+      lightEl.textContent = 'N/A';
+      lightEl.className = 'sensor-tile-val';
+      lightEl.style.color = 'var(--muted)';
     }
-    const co2El      = document.getElementById('co2');
-    const co2LabelEl = document.getElementById('co2-label');
-    if (d.scd40_ok && d.co2 >= 400) {
-      co2El.innerHTML        = d.co2 + ' <span style="font-size:0.7rem;color:var(--muted);">ppm</span>';
-      co2LabelEl.textContent = d.co2_label || '–';
-      co2LabelEl.style.color = d.co2 < 1000 ? '#00e676' : d.co2 < 1500 ? '#ffd740' : '#ff1744';
+
+    // CO2 / SCD40
+    if (d.scd40_ok) {
+      if (d.co2 != null && d.co2 >= 400) {
+        co2El.innerHTML = d.co2 + ' <span style="font-size:0.7rem;color:var(--muted);">ppm</span>';
+        co2LabelEl.textContent = d.co2_label || '–';
+        co2LabelEl.style.color = d.co2 < 1000 ? '#00e676' : d.co2 < 1500 ? '#ffd740' : '#ff1744';
+        co2El.style.color = '';
+      } else if (d.co2 === 0 || d.co2 == null) {
+        co2El.textContent = 'Warming up';
+        co2El.style.color = 'var(--muted)';
+        co2LabelEl.textContent = '';
+        co2LabelEl.style.color = 'var(--muted)';
+      } else {
+        co2El.textContent = 'N/A';
+        co2El.style.color = 'var(--muted)';
+        co2LabelEl.textContent = '';
+        co2LabelEl.style.color = 'var(--muted)';
+      }
     } else {
-      co2El.innerHTML        = 'N/A';
-      co2El.style.color      = 'var(--muted)';
-      co2LabelEl.textContent = '–';
+      co2El.textContent = 'N/A';
+      co2El.style.color = 'var(--muted)';
+      co2LabelEl.textContent = '';
       co2LabelEl.style.color = 'var(--muted)';
     }
-  });
+  }).catch(err => { console.error('pollSensors error', err); });
 }
 
 function showMsg(txt, type) {
@@ -778,16 +808,20 @@ static void handleCaptivePortal() {
     server.send(302, "text/plain", "");
 }
 
+static void addCorsHeaders();
+
 static void handleRoot() {
-    server.send(200, "text/html", HTML_PAGE);
+  addCorsHeaders();
+  server.send(200, "text/html", HTML_PAGE);
 }
 
 static void handleWifiGet() {
-    char buf[160];
-    snprintf(buf, sizeof(buf), "{\"ssid\":\"%s\",\"connected\":%s}",
-             escapeJson(wifiConfigSsid()).c_str(),
-             WiFi.status() == WL_CONNECTED ? "true" : "false");
-    server.send(200, "application/json", buf);
+  addCorsHeaders();
+  char buf[160];
+  snprintf(buf, sizeof(buf), "{\"ssid\":\"%s\",\"connected\":%s}",
+       escapeJson(wifiConfigSsid()).c_str(),
+       WiFi.status() == WL_CONNECTED ? "true" : "false");
+  server.send(200, "application/json", buf);
 }
 
 static void handleScan() {
@@ -838,8 +872,9 @@ static void handleSetWifi() {
 }
 
 static void addCorsHeaders() {
-    server.sendHeader("Access-Control-Allow-Origin", "*");
-    server.sendHeader("Access-Control-Allow-Methods", "GET");
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.sendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  server.sendHeader("Access-Control-Allow-Headers", "Content-Type, Accept");
 }
 
 static void handleDeviceInfo() {

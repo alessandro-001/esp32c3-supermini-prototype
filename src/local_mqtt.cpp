@@ -1,3 +1,19 @@
+/*
+  Reference-only MQTT fix file.
+
+  This is NOT wired into the Docker/API project.
+  You can delete this file after copying the relevant changes into the ESP32
+  firmware local_mqtt.cpp file.
+
+  Main fixes:
+  1. Store broker IP in a static IPAddress instead of passing temporary String.c_str()
+     to PubSubClient::setServer().
+  2. Increase MQTT buffer from 512 to 1024.
+  3. Shorten MQTT socket timeout from 15s to 5s.
+  4. Stop the WiFiClient socket before reconnecting after failed/lost MQTT state.
+  5. Check publish() result so failed publishes are visible in Serial logs.
+*/
+
 #include "local_mqtt.h"
 #include "config.h"
 #include "sensors.h"
@@ -11,6 +27,11 @@
 static WiFiClient   localWifiClient;
 static PubSubClient localMqtt(localWifiClient);
 static uint8_t      gSensorType = SENSOR_TYPE_DEFAULT;
+
+// CHANGE: Keep broker address in static storage so PubSubClient never depends
+// on a temporary String.c_str() pointer.
+static IPAddress    gBrokerIp;
+static uint16_t     gBrokerPort = LOCAL_MQTT_PORT;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -59,19 +80,33 @@ static void loadSensorType() {
 // ── Connection ────────────────────────────────────────────────────────────────
 
 static void localMqttConnect() {
-    if (WiFi.status() != WL_CONNECTED) return;
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.printf("[LocalMQTT] WiFi not connected, skip MQTT connect. status=%d\n", WiFi.status());
+        return;
+    }
     if (localMqtt.connected()) return;
 
     String clientId = "IESWIC3A-" + WiFi.macAddress();
     clientId.replace(":", "");
 
-    Serial.print("[LocalMQTT] Connecting...");
+    Serial.printf("[LocalMQTT] Connecting to %s:%u as %s...",
+                  gBrokerIp.toString().c_str(),
+                  gBrokerPort,
+                  clientId.c_str());
+
     if (localMqtt.connect(clientId.c_str())) {
         Serial.println(" connected!");
         logPush("[LocalMQTT] connected! topic=" + buildTopic());
     } else {
-        Serial.printf(" failed (rc=%d)\n", localMqtt.state());
+        Serial.printf(" failed (rc=%d) WiFi=%d RSSI=%d IP=%s\n",
+                      localMqtt.state(),
+                      WiFi.status(),
+                      WiFi.RSSI(),
+                      WiFi.localIP().toString().c_str());
         logPush("[LocalMQTT] failed (rc=" + String(localMqtt.state()) + ")");
+
+        // CHANGE: close any half-open TCP socket before next reconnect attempt.
+        localWifiClient.stop();
     }
 }
 
@@ -81,9 +116,26 @@ void localMqttSetBroker(const String& ip, uint16_t port) {
     p.putString("ip",   ip);
     p.putUShort("port", port);
     p.end();
+
     localMqtt.disconnect();
-    localMqtt.setServer(ip.c_str(), port);
-    Serial.printf("[LocalMQTT] Broker updated → %s:%d\n", ip.c_str(), port);
+
+    // CHANGE: close the underlying TCP socket when changing broker.
+    localWifiClient.stop();
+
+    gBrokerPort = port;
+
+    // OLD CODE:
+    // localMqtt.setServer(ip.c_str(), port);
+
+    // CHANGE: parse the String once into static IPAddress storage.
+    if (!gBrokerIp.fromString(ip)) {
+        Serial.printf("[LocalMQTT] Invalid broker IP → %s\n", ip.c_str());
+        logPush("[LocalMQTT] Invalid broker IP: " + ip);
+        return;
+    }
+
+    localMqtt.setServer(gBrokerIp, gBrokerPort);
+    Serial.printf("[LocalMQTT] Broker updated → %s:%u\n", gBrokerIp.toString().c_str(), gBrokerPort);
 }
 
 String localMqttGetBrokerIP() {
@@ -106,23 +158,49 @@ void localMqttInit() {
     loadSensorType();
     String   ip   = localMqttGetBrokerIP();
     uint16_t port = localMqttGetBrokerPort();
-    localMqtt.setServer(ip.c_str(), port);
-    localMqtt.setBufferSize(512);
-    localMqtt.setKeepAlive(60);
-    localMqtt.setSocketTimeout(15);
+
+    gBrokerPort = port;
+
+    // OLD CODE:
+    // localMqtt.setServer(ip.c_str(), port);
+
+    // CHANGE: avoid giving PubSubClient a pointer from a temporary/local String.
+    if (!gBrokerIp.fromString(ip)) {
+        Serial.printf("[LocalMQTT] Invalid broker IP → %s\n", ip.c_str());
+        logPush("[LocalMQTT] Invalid broker IP: " + ip);
+        return;
+    }
+
+    localMqtt.setServer(gBrokerIp, gBrokerPort);
+
+    // OLD CODE:
+    // localMqtt.setBufferSize(512);
+    // localMqtt.setKeepAlive(60);
+    // localMqtt.setSocketTimeout(15);
+
+    // CHANGE: payload can exceed 512 with topic/header overhead; keep timeout short
+    // so failed TCP connects do not stall the firmware for too long.
+    localMqtt.setBufferSize(1024);
+    localMqtt.setKeepAlive(30);
+    localMqtt.setSocketTimeout(5);
+
     localMqttConnect();
     Serial.printf("[LocalMQTT] Initialised → %s:%u  topic=%s\n",
-                  ip.c_str(), port, buildTopic().c_str());
+                  gBrokerIp.toString().c_str(), gBrokerPort, buildTopic().c_str());
 }
 
 void localMqttHandle() {
     if (WiFi.status() != WL_CONNECTED) return;
+
     if (!localMqtt.loop()) {
         static unsigned long lastReconnect = 0;
         if (millis() - lastReconnect > 5000) {
             lastReconnect = millis();
-            Serial.println("[LocalMQTT] Connection lost — reconnecting...");
+            Serial.printf("[LocalMQTT] Connection lost rc=%d — reconnecting...\n", localMqtt.state());
             logPush("[LocalMQTT] Lost (rc=" + String(localMqtt.state()) + ") — reconnecting...");
+
+            // CHANGE: clear stale socket before trying MQTT reconnect.
+            localWifiClient.stop();
             localMqttConnect();
         }
     }
@@ -195,8 +273,22 @@ void localMqttPublish() {
         );
     }
 
-    localMqtt.publish(topic.c_str(), payload);
-    Serial.printf("[LocalMQTT] Published to %s: %s\n", topic.c_str(), payload);
+    // OLD CODE:
+    // localMqtt.publish(topic.c_str(), payload);
+    // Serial.printf("[LocalMQTT] Published to %s: %s\n", topic.c_str(), payload);
+
+    // CHANGE: check publish() result so failed sends are visible.
+    bool ok = localMqtt.publish(topic.c_str(), payload);
+    if (ok) {
+        Serial.printf("[LocalMQTT] Published to %s: %s\n", topic.c_str(), payload);
+    } else {
+        Serial.printf("[LocalMQTT] Publish failed topic=%s payloadLen=%u state=%d\n",
+                      topic.c_str(),
+                      strlen(payload),
+                      localMqtt.state());
+        localWifiClient.stop();
+    }
+
     logPush("[LocalMQTT] T:" + String(sensorTemp,1) +
             " H:" + String(sensorHum,1) +
             " CO2:" + String(sensorCO2) +
@@ -229,6 +321,15 @@ void localMqttPublishConfig(float tempHigh, float tempLow,
         co2High
     );
 
-    localMqtt.publish(topic.c_str(), payload, true);
-    Serial.printf("[LocalMQTT] Config published on %s: %s\n", topic.c_str(), payload);
+    // CHANGE: check retained config publish result too.
+    bool ok = localMqtt.publish(topic.c_str(), payload, true);
+    if (ok) {
+        Serial.printf("[LocalMQTT] Config published on %s: %s\n", topic.c_str(), payload);
+    } else {
+        Serial.printf("[LocalMQTT] Config publish failed topic=%s payloadLen=%u state=%d\n",
+                      topic.c_str(),
+                      strlen(payload),
+                      localMqtt.state());
+        localWifiClient.stop();
+    }
 }

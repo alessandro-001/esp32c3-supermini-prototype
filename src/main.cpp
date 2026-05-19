@@ -86,7 +86,11 @@ static void startAP() {
 }
 
 static void stopAP() {
+    // Ensure AP is stopped and WiFi mode is set to STA only so SSID is not visible
     WiFi.softAPdisconnect(true);
+    delay(200);
+    WiFi.mode(WIFI_STA);
+    delay(200);
     Serial.println("[AP] Hotspot hidden — STA only");
 }
 

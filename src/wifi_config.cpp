@@ -1,3 +1,18 @@
+/*
+  Reference-only Wi-Fi fix file.
+
+  This is NOT wired into the Docker/API project.
+  You can delete this file after copying the relevant changes into the ESP32
+  firmware wifi_config.cpp file.
+
+  Main fixes:
+  1. Do not disconnect/re-begin Wi-Fi if already connected.
+  2. Force normal station mode for runtime connection.
+  3. Disable Wi-Fi sleep using both WiFi.setSleep(false) and esp_wifi_set_ps().
+  4. Enable auto reconnect.
+  5. Avoid persisting Wi-Fi settings repeatedly to flash.
+*/
+
 #include "wifi_config.h"
 #include <Preferences.h>
 #include <WiFi.h>
@@ -5,7 +20,6 @@
 #include "config.h"
 #include "web_server.h"
 #include "secrets.h"
-
 
 //! ── Wi-Fi Configuration ───────────────────────────────────────────────────────
 
@@ -33,7 +47,6 @@ static String escapeJson(const String& input) {
   return output;
 }
 
-/// Scan available Wi-Fi networks, returns JSON array
 String wifiScanNetworks() {
   Serial.println("[WiFi] Scanning networks...");
 
@@ -58,7 +71,6 @@ String wifiScanNetworks() {
   return json;
 }
 
-/// Load saved credentials from NVS (local storage), fallback to defaults
 void wifiConfigBegin(const char* defaultSsid, const char* defaultPass) {
     prefs.begin("netcfg", false);
 
@@ -73,7 +85,6 @@ void wifiConfigBegin(const char* defaultSsid, const char* defaultPass) {
     Serial.printf("[WiFi] Loaded SSID: %s\n", gSsid.isEmpty() ? "(none)" : gSsid.c_str());
 }
 
-/// Save new credentials to NVS (local storage)
 bool wifiConfigSave(const String& ssid, const String& pass) {
   if (ssid.length() == 0) return false;
   if (pass.length() > 0 && pass.length() < 8) {
@@ -89,42 +100,9 @@ bool wifiConfigSave(const String& ssid, const String& pass) {
   return true;
 }
 
-/// Get current saved SSID
 const String& wifiConfigSsid() {
   return gSsid;
 }
-
-/// Connect to saved Wi-Fi, returns true on success
-// bool wifiConfigConnect(uint32_t timeoutMs) {
-//   //if (gSsid.isEmpty()) return false;
-//   if (gSsid.isEmpty()) {
-//         Serial.println("[WiFi] No credentials saved — skipping connect");
-//         return false;
-//     }
-
-//   WiFi.disconnect(false); //disconnect STA if it was previously connected
-//   delay(100);
-//   // WiFi.mode(WIFI_AP_STA);
-//   WiFi.begin(gSsid.c_str(), gPass.c_str());
-
-//   Serial.printf("[WiFi] Connecting to %s", gSsid.c_str());
-//   Serial.printf("[WiFi] Trying SSID: %s, PASS: %s\n", gSsid.c_str(), gPass.c_str());
-
-//   const uint32_t start = millis();
-//   while (WiFi.status() != WL_CONNECTED && (millis() - start) < timeoutMs) {
-//     delay(500);
-//     Serial.print(".");
-//   }
-//   Serial.println();
-
-//   if (WiFi.status() == WL_CONNECTED) {
-//     Serial.printf("[WiFi] Connected! IP: %s\n", WiFi.localIP().toString().c_str());
-//     return true;
-//   }
-
-//   Serial.printf("[WiFi] Connection failed, status: %d\n", WiFi.status());
-//   return false;
-// }
 
 bool wifiConfigConnect(uint32_t timeoutMs) {
     if (gSsid.isEmpty()) {
@@ -132,22 +110,46 @@ bool wifiConfigConnect(uint32_t timeoutMs) {
         return false;
     }
 
-    WiFi.disconnect(false);  // disconnect STA only — keeps AP running
-    delay(100);
+    // CHANGE: if Wi-Fi is already connected, do not force disconnect/reconnect.
+    if (WiFi.status() == WL_CONNECTED) {
+        return true;
+    }
+
+    // OLD CODE:
+    // WiFi.disconnect(false);
+    // delay(100);
+    // WiFi.begin(gSsid.c_str(), gPass.c_str());
+
+    // CHANGE: station mode for normal runtime operation.
+    // If you intentionally need AP+STA while running, replace WIFI_STA with WIFI_AP_STA.
+    WiFi.mode(WIFI_STA);
+
+    // CHANGE: avoid flash writes from WiFi stack and improve reconnect behavior.
+    WiFi.persistent(false);
+    WiFi.setAutoReconnect(true);
+
+    // CHANGE: disable Wi-Fi sleep using both Arduino and ESP-IDF APIs.
+    WiFi.setSleep(false);
+    esp_wifi_set_ps(WIFI_PS_NONE);
+
     WiFi.begin(gSsid.c_str(), gPass.c_str());
 
     Serial.printf("[WiFi] Connecting to %s\n", gSsid.c_str());
 
     const uint32_t start = millis();
     while (WiFi.status() != WL_CONNECTED && (millis() - start) < timeoutMs) {
-        delay(500);
+        delay(250);
         Serial.print(".");
     }
     Serial.println();
 
     if (WiFi.status() == WL_CONNECTED) {
-        esp_wifi_set_ps(WIFI_PS_NONE);  // disable modem sleep — prevents random disconnects
-        Serial.printf("[WiFi] Connected! IP: %s\n", WiFi.localIP().toString().c_str());
+        WiFi.setSleep(false);
+        esp_wifi_set_ps(WIFI_PS_NONE);
+
+        Serial.printf("[WiFi] Connected! IP: %s RSSI: %d\n",
+                      WiFi.localIP().toString().c_str(),
+                      WiFi.RSSI());
         logPush("[WiFi] Connected! IP: " + WiFi.localIP().toString());
         return true;
     }
@@ -157,12 +159,10 @@ bool wifiConfigConnect(uint32_t timeoutMs) {
     return false;
 }
 
-/// Check if WiFi credentials exist in NVS
 bool wifiConfigHasCredentials() {
   return wifiConfigSsid().length() > 0;
 }
 
-/// Clear saved WiFi credentials from NVS (called by factory reset)
 void wifiConfigClear() {
     prefs.begin("netcfg", false);
     prefs.clear();
@@ -172,7 +172,6 @@ void wifiConfigClear() {
     Serial.println("[WiFi] Credentials cleared");
 }
 
-/// Start Access Point mode for configuration
 void wifiApStart() {
   WiFi.mode(WIFI_AP);
   delay(200);
