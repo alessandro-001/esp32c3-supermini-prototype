@@ -798,7 +798,15 @@ static void saveThresholdsToNVS(float temp, float tempLow, float hum, float humL
 }
 
 static String getTelemetryDeviceId() {
-    return "IESWIC3A_" + WiFi.macAddress().substring(12);
+    uint8_t type = localMqttGetSensorType();
+    const char* prefix = "ENV_";
+    if (type == 2) prefix = "SOIL_";
+    else if (type == 3) prefix = "MIN_";
+
+    String mac = WiFi.macAddress();
+    mac.replace(":", "");
+    String suffix = mac.length() >= 4 ? mac.substring(mac.length() - 4) : mac;
+    return String(prefix) + suffix;
 }
 
 // ── HTTP Handlers ─────────────────────────────────────────────────────────────

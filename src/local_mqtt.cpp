@@ -35,8 +35,23 @@ static uint16_t     gBrokerPort = LOCAL_MQTT_PORT;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+static String getDeviceSuffix() {
+    String mac = WiFi.macAddress();
+    mac.replace(":", "");
+    return mac.length() >= 4 ? mac.substring(mac.length() - 4) : mac;
+}
+
+static const char* sensorTypePrefix(uint8_t type) {
+    switch (type) {
+        case 1:  return "ENV_";
+        case 2:  return "SOIL_";
+        case 3:  return "MIN_";
+        default: return "ENV_";
+    }
+}
+
 static String getDeviceId() {
-    return "IESWIC3A_" + WiFi.macAddress().substring(12);
+    return String(sensorTypePrefix(gSensorType)) + getDeviceSuffix();
 }
 
 static String buildTopic() {

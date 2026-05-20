@@ -123,6 +123,7 @@ void setup() {
     Serial.println("✓ NeoPixel on GPIO3");
 
     factoryResetInit();
+
     scd40Init();
     ldrInit();
 
@@ -175,31 +176,85 @@ void setup() {
 // ── Loop ─────────────────────────────────────────────────────────────────────
 void loop() {
     uint32_t now = millis();
-    delay(1);
+
+    /*
+      CHANGE:
+      Service network-facing tasks first.
+
+      OLD CODE DID SENSOR WORK FIRST:
+        delay(1);
+        factoryResetHandle();
+        scd40Read();
+        ...
+        webServerHandle();
+        ...
+        localMqttHandle();
+
+      That means a slow sensor read, SCD40 recovery delay, Wi-Fi retry, HTTP POST,
+      or LED/ADC section can starve the web server and MQTT keepalive.
+    */
+    webServerHandle();
+    localMqttHandle();
+
+    if (thingsBoardEnabled) {
+        provisioningHandle();
+        mqttHandle();
+    }
 
     factoryResetHandle();
 
+    /*
+      Give the Wi-Fi stack a tiny yield, but do not use long delay() calls here.
+      Long blocking delays are one reason /device_info and / can accept a socket
+      but fail to send the response body.
+    */
+    delay(1);
+
+    /*
+      Sensor reads should be internally interval-gated and non-blocking.
+      scd40Read() should return quickly when no data is ready.
+    */
     scd40Read();
 
-    // ── LDR read with LED off to avoid interference ───────────────────────────
+    /*
+      LDR read with LED off to avoid interference.
+
+      OLD CODE:
+        ring.clear();
+        ring.show();
+        delay(20);
+        ldrRead();
+
+      CHANGE:
+      20 ms is not huge, but still service web/MQTT immediately before and after.
+    */
     static uint32_t lastLdrCheck = 0;
     if (now - lastLdrCheck >= SENSOR_INTERVAL) {
         lastLdrCheck = now;
+
+        webServerHandle();
+        localMqttHandle();
+
         ring.clear();
         ring.show();
-        delay(20);      // let LED light decay before ADC read
-        ldrRead();      // ldrRead() has its own interval guard but we gate it here too
+        delay(20);
+
+        webServerHandle();
+        localMqttHandle();
+
+        ldrRead();
     }
 
     static bool warnedSCD40 = false;
     if (!sensorOK && !warnedSCD40) {
-        Serial.println("⚠️ SCD40 not found — all sensors unavailable");
+        Serial.println("WARNING: SCD40 not found - all sensors unavailable");
         warnedSCD40 = true;
     }
 
-    webServerHandle();
-
-    // ── LED ───────────────────────────────────────────────────────────────────
+    /*
+      LED update.
+      Keep this short.
+    */
     if (now - lastLedUpdate >= LED_INTERVAL) {
         lastLedUpdate = now;
         if (sensorOK) {
@@ -215,10 +270,14 @@ void loop() {
         ring.show();
     }
 
-    // ── MQTT publish every 5s ─────────────────────────────────────────────────
-    static uint32_t lastMqttPublish    = 0;
-    static bool     sentAttributes     = false;
-    static bool     wasConnected       = false;
+    /*
+      MQTT publish every 5s.
+      localMqttHandle() is already called continuously above, so this only sends
+      telemetry when connected.
+    */
+    static uint32_t lastMqttPublish = 0;
+    static bool     sentAttributes  = false;
+    static bool     wasConnected    = false;
 
     if (now - lastMqttPublish >= 5000) {
         lastMqttPublish = now;
@@ -229,29 +288,49 @@ void loop() {
             wasConnected = isConnected;
             if (isConnected) {
                 mqttPublish();
-                if (!sentAttributes) { mqttPublishAttributes(); sentAttributes = true; }
+                if (!sentAttributes) {
+                    mqttPublishAttributes();
+                    sentAttributes = true;
+                }
             }
         }
 
         localMqttPublish();
     }
 
-    // ── Periodic system health ────────────────────────────────────────────────
+    /*
+      Periodic health.
+      CHANGE: include RSSI so you can correlate failures with Wi-Fi quality.
+    */
     static uint32_t lastHealthLog = 0;
     if (now - lastHealthLog >= 30000) {
         lastHealthLog = now;
         logPush("[Sys] heap=" + String(ESP.getFreeHeap()) +
                 " up=" + String(now / 1000) + "s" +
                 " wifi=" + String(WiFi.status() == WL_CONNECTED ? "OK" : "X") +
-                " mqtt=" + String(localMqttIsConnected() ? "OK" : "X"));
+                " mqtt=" + String(localMqttIsConnected() ? "OK" : "X") +
+                " rssi=" + String(WiFi.RSSI()));
+
+        Serial.printf("[Sys] heap=%u up=%lus wifi=%d mqtt=%d rssi=%d\n",
+                      ESP.getFreeHeap(),
+                      now / 1000,
+                      WiFi.status(),
+                      localMqttIsConnected(),
+                      WiFi.RSSI());
     }
 
-    // ── AP fallback + STA retry ───────────────────────────────────────────────────
+    /*
+      AP fallback + STA retry.
+
+      This stays near the end because wifiConfigConnect(10000) can block for up
+      to 10 seconds. For best production behavior, convert Wi-Fi reconnect to a
+      non-blocking state machine later.
+    */
     static uint32_t wifiLostAt   = 0;
     static bool     apReEnabled  = false;
     static uint32_t lastStaRetry = 0;
     static const uint32_t AP_FALLBACK_MS = 30000;
-    static const uint32_t STA_RETRY_MS   = 120000;  // retry every 2min not 1min
+    static const uint32_t STA_RETRY_MS   = 120000;
 
     if (WiFi.status() != WL_CONNECTED) {
         if (wifiLostAt == 0) {
@@ -259,43 +338,49 @@ void loop() {
             logPush("[WiFi] Lost connection (status=" + String(WiFi.status()) + ")");
         }
 
-        // Re-enable AP after 30s
         if (!apReEnabled && deviceIsCommissioned() && (now - wifiLostAt > AP_FALLBACK_MS)) {
-            Serial.println("[WiFi] Lost for 30s — re-enabling AP");
-            logPush("[WiFi] Lost 30s — AP re-enabled");
+            Serial.println("[WiFi] Lost for 30s - re-enabling AP");
+            logPush("[WiFi] Lost 30s - AP re-enabled");
             startAP();
             apReEnabled = true;
         }
 
-        // Only retry STA if MQTT is not mid-publish and enough time has passed
         if (deviceIsCommissioned() && wifiConfigHasCredentials()
             && (now - lastStaRetry > STA_RETRY_MS)
-            && !localMqttIsConnected()) {  // ← don't retry if MQTT is active
+            && !localMqttIsConnected()) {
+
             lastStaRetry = now;
             Serial.println("[WiFi] Retrying STA connection...");
             logPush("[WiFi] Retry attempt...");
+
+            /*
+              WARNING:
+              This is still blocking up to 10s. It is kept here so the patch is
+              small. The next reliability step is a non-blocking Wi-Fi reconnect
+              state machine.
+            */
             bool ok = wifiConfigConnect(10000);
             if (ok) {
-                if (apReEnabled) { stopAP(); apReEnabled = false; }
+                if (apReEnabled) {
+                    stopAP();
+                    apReEnabled = false;
+                }
                 startMDNS();
                 wifiLostAt = 0;
                 Serial.println("[WiFi] Reconnected!");
                 logPush("[WiFi] Reconnected! IP: " + WiFi.localIP().toString());
-                localMqttInit();  // reconnect MQTT after WiFi restored
+                localMqttInit();
             } else {
                 logPush("[WiFi] Retry failed (status=" + String(WiFi.status()) + ")");
             }
         }
     } else {
-        if (apReEnabled) { stopAP(); startMDNS(); apReEnabled = false; }
+        if (apReEnabled) {
+            stopAP();
+            startMDNS();
+            apReEnabled = false;
+        }
         wifiLostAt   = 0;
         lastStaRetry = 0;
     }
-
-    // ── Service handles ───────────────────────────────────────────────────────
-    if (thingsBoardEnabled) {
-        provisioningHandle();
-        mqttHandle();
-    }
-    localMqttHandle();
 }
