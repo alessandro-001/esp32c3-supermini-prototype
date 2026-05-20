@@ -135,4 +135,6 @@ void scd40Read() {
     _badReadCount = 0;
 
     Serial.printf("[SCD40] T:%.1f°C  H:%.1f%%  CO2:%d ppm (%s)\n",
-                  sensorTemp, sensorHum, sensorCO2, co2Label(sensorCO2));    logPush("T:" + String(sensorTemp,1) + "\u00b0C  H:" + String(sensorHum,1) + "%  CO2:" + String(sensorCO2) + " ppm (" + co2Label(sensorCO2) + ")");}
+                  sensorTemp, sensorHum, sensorCO2, co2Label(sensorCO2));
+    logPush("T:" + String(sensorTemp,1) + "\u00b0C  H:" + String(sensorHum,1) + "%  CO2:" + String(sensorCO2) + " ppm (" + co2Label(sensorCO2) + ")");
+}

@@ -13,8 +13,6 @@
 #define I2C_SDA             7
 #define I2C_SCL             6
 
-// LDR — GPIO0 with 1kΩ pull-down (102 resistor)
-// Low threshold due to strong pull-down + strapping pin behaviour
 #define LDR_PIN             0
 #define LDR_THRESHOLD       50
 #define LDR_ENABLED         1
@@ -22,7 +20,7 @@
 #define FACTORY_RESET_PIN   4
 
 //! ── Sensor & LED Timing ──────────────────────────────────────────────────────
-#define SENSOR_INTERVAL     2000
+#define SENSOR_INTERVAL     5000
 #define LED_INTERVAL        20
 
 //! ── Temperature Range ────────────────────────────────────────────────────────
