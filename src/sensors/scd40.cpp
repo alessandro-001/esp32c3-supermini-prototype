@@ -140,9 +140,13 @@ void scd40Read() {
     float h        = 0.0f;
 
     if (!_scd40.readMeasurement(co2Float, t, h)) {
-        Serial.printf("[SCD40] readMeasurement error=%u\n", _scd40.getLastError());
+        Serial.printf("[SCD40 DEBUG] readMeasurement FAILED error=%u co2Float=%.1f T=%.2f H=%.2f\n",
+                    _scd40.getLastError(), co2Float, t, h);
         return;
     }
+
+    Serial.printf("[SCD40 DEBUG] readMeasurement OK co2Float=%.1f T=%.2f H=%.2f\n",
+                co2Float, t, h);
 
     uint16_t co2 = static_cast<uint16_t>(co2Float + 0.5f);
 

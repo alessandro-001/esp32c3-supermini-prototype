@@ -42,6 +42,9 @@ bool SCD40::readMeasurement(float &co2, float &temp, float &humidity) {
     temp = -45.0f + (175.0f * static_cast<float>(words[1]) / 65535.0f);
     humidity = 100.0f * static_cast<float>(words[2]) / 65535.0f;
 
+    Serial.printf("[SCD40 LIB DEBUG] rawCO2=%u rawT=%u rawH=%u -> CO2=%.1f T=%.2f H=%.2f\n",
+              words[0], words[1], words[2], co2, temp, humidity);
+
     // CRC has already been validated by readWords().
     // Do not reject valid sensor output here; let the application decide
     // whether a value is usable for its product logic.
