@@ -3,6 +3,10 @@
 		{
 			"name": "ESP32C3_SM_BF_prototype",
 			"path": ".."
+		},
+		{
+			"name": "TEST_ENS160",
+			"path": "../../TEST_ENS160"
 		}
 	],
 	"settings": {}

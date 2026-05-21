@@ -1,19 +1,3 @@
-/*
-  Reference-only MQTT fix file.
-
-  This is NOT wired into the Docker/API project.
-  You can delete this file after copying the relevant changes into the ESP32
-  firmware local_mqtt.cpp file.
-
-  Main fixes:
-  1. Store broker IP in a static IPAddress instead of passing temporary String.c_str()
-     to PubSubClient::setServer().
-  2. Increase MQTT buffer from 512 to 1024.
-  3. Shorten MQTT socket timeout from 15s to 5s.
-  4. Stop the WiFiClient socket before reconnecting after failed/lost MQTT state.
-  5. Check publish() result so failed publishes are visible in Serial logs.
-*/
-
 #include "local_mqtt.h"
 #include "config.h"
 #include "sensors.h"
@@ -28,8 +12,6 @@ static WiFiClient   localWifiClient;
 static PubSubClient localMqtt(localWifiClient);
 static uint8_t      gSensorType = SENSOR_TYPE_DEFAULT;
 
-// CHANGE: Keep broker address in static storage so PubSubClient never depends
-// on a temporary String.c_str() pointer.
 static IPAddress    gBrokerIp;
 static uint16_t     gBrokerPort = LOCAL_MQTT_PORT;
 

@@ -1,0 +1,13 @@
+SCD40	KEYWORD1
+begin	KEYWORD2
+startMeasurement	KEYWORD2
+stopMeasurement	KEYWORD2
+readMeasurement	KEYWORD2
+isDataReady	KEYWORD2
+setTemperatureOffset	KEYWORD2
+getTemperatureOffset	KEYWORD2
+enableASC	KEYWORD2
+performForcedCalibration	KEYWORD2
+saveSettings	KEYWORD2
+getSerialNumber	KEYWORD2
+getLastError	KEYWORD2
