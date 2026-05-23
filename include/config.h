@@ -42,7 +42,7 @@
 #define SENSOR_TYPE_DEFAULT 1
 
 //! ── Local MQTT (Raspberry Pi / Docker) ──────────────────────────────────────
-#define LOCAL_MQTT_SERVER   "192.168.0.251"
+#define LOCAL_MQTT_SERVER   "weedsync.local"
 #define LOCAL_MQTT_PORT     1883
 // Topic is dynamic: IESWIC3A/{sensor_type}/data — built at runtime in local_mqtt.cpp
 
