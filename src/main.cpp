@@ -86,12 +86,9 @@ static void startAP() {
 }
 
 static void stopAP() {
-    // Ensure AP is stopped and WiFi mode is set to STA only so SSID is not visible
     WiFi.softAPdisconnect(true);
     delay(200);
-    WiFi.mode(WIFI_STA);
-    delay(200);
-    Serial.println("[AP] Hotspot hidden — STA only");
+    Serial.println("[AP] Hotspot stopped");
 }
 
 // ── Register Device ───────────────────────────────────────────────────────────
@@ -111,7 +108,7 @@ bool registerDevice() {
 }
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
-void setup() {
+void setup() {  
     Serial.begin(115200);
     delay(1500);
     Serial.println("\n====== BOSS FARM Smart Monitor ======");
@@ -129,7 +126,7 @@ void setup() {
 
     // ── Radio init: AP first, always ─────────────────────────────────────────
     WiFi.persistent(false);
-    WiFi.disconnect(true);
+    WiFi.disconnect(false);
     delay(100);
     WiFi.mode(WIFI_AP_STA);
     delay(300);
