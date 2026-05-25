@@ -1,564 +1,701 @@
-# Smart Farm Monitor — Firmware
+# BOSS FARM Smart Monitor — Firmware Implementation
 
-![ESP32-C3](https://img.shields.io/badge/ESP32--C3-Lolin_C3_Mini-blue?style=flat-square)
-![PlatformIO](https://img.shields.io/badge/PlatformIO-Arduino-orange?style=flat-square)
-![ThingsBoard](https://img.shields.io/badge/ThingsBoard-Cloud_MQTT-00a6d6?style=flat-square)
-![SHTC3](https://img.shields.io/badge/SHTC3-Temp_%26_Humidity-green?style=flat-square)
-![ENS160](https://img.shields.io/badge/ENS160-Air_Quality-yellowgreen?style=flat-square)
-![LDR](https://img.shields.io/badge/LDR-Light_Detection-yellow?style=flat-square)
-![NeoPixel](https://img.shields.io/badge/NeoPixel-WS2812B-purple?style=flat-square)
-![Firmware](https://img.shields.io/badge/Firmware-v1.0.0-lightgrey?style=flat-square)
-
-ESP32-C3 based environmental monitoring device. Reads temperature, humidity, air quality and light, publishes telemetry to ThingsBoard Cloud via MQTT, and exposes a local web UI for configuration.
+ESP32-C3 firmware for environmental monitoring with local MQTT publishing, persistent NVS storage, and dynamic sensor type configuration.
 
 ---
 
-## Table of Contents
+## Architecture Overview
 
-- [Project Overview](#project-overview)
-- [Hardware Setup & Wiring](#hardware-setup--wiring)
-- [Firmware Architecture](#firmware-architecture)
-- [Web Endpoints Reference](#web-endpoints-reference)
-- [ThingsBoard Setup Guide](#thingsboard-setup-guide)
-- [Docker Local Infrastructure](#docker-local-infrastructure)
-- [Build, Flash & Test](#build-flash--test)
+### Module Structure
+
+```
+sensors.h ← Single source of truth for all sensor state
+├── scd40.cpp/h                 (SCD40 CO2 driver, raw I2C)
+├── ldr.cpp/h                   (LDR light detection)
+└── extern declarations         (sensorTemp, sensorHum, sensorCO2, ldrLightOn, alert flags)
+
+main.cpp                        (setup/loop, sensor reads, LED, MQTT publish, WiFi fallback)
+├── scd40Read()                 (5s interval via polling)
+├── ldrRead()                   (5s interval via polling)
+├── NeoPixel ring               (20ms update, hue from temp)
+└── MQTT publish                (5s telemetry, 60s attributes)
+
+local_mqtt.cpp/h                (MQTT connection to Raspberry Pi broker)
+├── localMqttPublish()          (telemetry: temp, hum, CO2, light)
+├── localMqttPublishConfig()    (attributes: thresholds, firmware, MAC)
+├── Sensor type dispatch        (ENV/SOIL/MIN topic routing)
+└── NVS broker storage
+
+web_server.cpp/h                (HTTP server, captive portal, single-page UI)
+├── handleRoot()                (HTML UI)
+├── handleSensors()             (live JSON)
+├── handleSetWifi()             (WiFi provisioning)
+├── handleSetThresh()           (threshold persistence)
+├── handleSetSensorType()       (type 1/2/3 selection)
+└── Log buffer                  (circular 40-line buffer)
+
+wifi_config.cpp/h               (WiFi credential storage & connection)
+├── wifiConfigSave()            (NVS netcfg namespace)
+├── wifiConfigConnect()         (STA connection with timeout)
+└── wifiApStart()               (AP mode for configuration)
+
+factory_reset.cpp/h             (GPIO4 button, 5s hold detection)
+└── factoryResetExecute()       (clears all NVS namespaces)
+
+provisioning.cpp/h              (ThingsBoard provisioning — DISABLED by default)
+└── (Optional: HTTP provisioning flow, HTTP-only, not used in main flow)
+```
+
+### Global State (sensors.h)
+
+All sensor state is declared as `extern` in `sensors.h` and defined in their respective driver files:
+
+```cpp
+// From scd40.cpp
+extern float    sensorTemp;    // Temperature (°C)
+extern float    sensorHum;     // Humidity (%)
+extern uint16_t sensorCO2;     // CO2 (ppm)
+extern bool     sensorOK;      // Sensor initialized
+extern bool     alertTemp;     // Temp threshold exceeded
+extern bool     alertHum;      // Humidity threshold exceeded
+extern bool     alertCO2;      // CO2 threshold exceeded
+
+// From ldr.cpp
+extern bool ldrLightOn;        // Light detected
+extern bool ldrOK;             // Sensor initialized
+```
+
+This ensures **no module directly includes sensor drivers** — everything goes through `sensors.h`.
 
 ---
 
-## Project Overview
+## Sensor Drivers
 
-Each unit is a self-contained monitor that:
+### SCD40 (scd40.cpp)
 
-- Reads sensors on a 2-second interval
-- Breathes an RGB LED ring whose hue maps to temperature (blue = cold, red = hot)
-- Publishes telemetry to ThingsBoard Cloud every 5 seconds via MQTT
-- Hosts a local web UI accessible via WiFi AP for configuration
-- Provisions itself automatically to ThingsBoard on first boot
+**Raw I2C implementation** — no external library. Implements Sensirion protocol with CRC-8 validation.
 
-### Tech Stack
+**Timing:**
+- I2C clock: 100 kHz
+- Periodic measurement: 5-second interval
+- First valid reading: ~5.2 seconds after boot
+- Poll interval: 1 second (checks data-ready flag)
+- Minimum read interval: 5.2 seconds (enforced)
 
-| Layer | Technology |
-|---|---|
-| MCU | ESP32-C3 (Lolin C3 Mini) |
-| Framework | Arduino via PlatformIO |
-| Cloud | ThingsBoard Cloud (MQTT) |
-| Sensors | SHTC3 (I2C), ENS160 (I2C), LDR (ADC) |
-| LED | Adafruit NeoPixel (12-LED ring) |
+**CRC-8 Validation:**
+- Polynomial: `0x31`
+- Every 16-bit word has an 8-bit CRC byte
+- All reads and writes validated before accepting
 
-### Prototype Sensor Split (Debug Only)
+**Command Set:**
+```cpp
+0x21B1  START_PERIODIC_MEASUREMENT
+0xEC05  READ_MEASUREMENT           (3 words: CO2, temp, humidity)
+0x3F86  STOP_PERIODIC_MEASUREMENT
+0xE4B8  GET_DATA_READY_STATUS
+0x3682  GET_SERIAL_NUMBER
+0x202F  GET_SENSOR_VARIANT
+```
 
-During development three units run in parallel, each with a subset of sensors. In the final product all sensors connect to a single unit.
+**Data Conversion:**
+```cpp
+CO2_ppm = word0
+Temperature_C = -45 + 175 * word1 / 65535
+Humidity_% = 100 * word2 / 65535
+```
 
-| Unit | Sensors |
-|---|---|
-| Unit 1 | SHTC3 — temperature & humidity |
-| Unit 2 | ENS160 — air quality |
-| Unit 3 | LDR — light detection |
+**Sanity Checks:**
+- Temperature: -40°C to 120°C (raw validation in readMeasurementFrame)
+- Humidity: 0% to 100%
+- CO2: 0 to 40,000 ppm (rejects if >40k)
+- Any CRC failure: frame discarded, retry on next poll
+
+**Debug Output:**
+```
+[SCD40] DataReady raw=0x0800 ready=YES
+[SCD40 RAW] 02 84 4F  5C 4A AB  85 54 69   (3 words + 3 CRCs)
+[SCD40] CRC CO2=OK TEMP=OK HUM=OK
+[SCD40] Decoded rawCO2=644 rawT=23626 rawH=34132 -> CO2=644 T=22.78 H=53.29
+[SCD40] T:22.8°C H:53.3% CO2:644 ppm (Good)
+```
+
+### LDR (ldr.cpp)
+
+**Voltage divider ADC input** on GPIO0.
+
+**Timing:**
+- Reads every 5 seconds (synced with sensor interval)
+- 5 samples taken with 5ms delay between reads
+- Minimum valid reading requires 3+ valid ADC values (filters spikes)
+
+**Logic:**
+- ADC value > threshold → light ON
+- ADC value ≤ threshold → light OFF
+- Threshold adjustable in `config.h` (default: 50)
+
+**Filtering:**
+- Silently holds previous reading if all 5 samples are near max (4095) — strapping spike
+- Requires 3+ valid samples to update state
 
 ---
 
-## Hardware Setup & Wiring
+## Main Loop Flow (main.cpp)
 
-### ESP32-C3 Pin Assignment
+### setup()
 
-```
-GPIO2   — LDR (ADC input)
-GPIO3   — NeoPixel data
-GPIO8   — I2C SDA (SHTC3 + ENS160)
-GPIO9   — I2C SCL (SHTC3 + ENS160)
-```
+1. Serial init (115200 baud)
+2. NeoPixel init + clear
+3. Factory reset button init
+4. SCD40 init (I2C, periodic measurement start)
+5. LDR init (ADC setup)
+6. WiFi init:
+   - Mode: WIFI_AP_STA
+   - AP always enabled (unique SSID from MAC)
+   - Load saved WiFi credentials
+   - If commissioned: attempt STA connection (15s timeout)
+   - If not commissioned: AP visible, no STA attempt
+7. Web server init (HTTP on port 80)
+8. Load thresholds from NVS
 
-> Both SHTC3 and ENS160 share the I2C bus. SHTC3 is at address `0x70`, ENS160 is at `0x53` (or `0x52` if ADDR pin is HIGH). No address conflict.
+### loop()
 
-### SHTC3 — Temperature & Humidity
+**Execution order (runs every ~1ms):**
 
-| SHTC3 Pin | ESP32-C3 Pin |
-|---|---|
-| VCC | 3.3V |
-| GND | GND |
-| SDA | GPIO8 |
-| SCL | GPIO9 |
+1. **Web server handle** (non-blocking)
+2. **Local MQTT handle** (non-blocking, 5s reconnect)
+3. **Provisioning handle** (if ThingsBoard enabled)
+4. **Factory reset check** (GPIO4 hold detection)
+5. **Delay 1ms** (prevent watchdog, allow background tasks)
 
-### ENS160 — Air Quality (AQI, TVOC, eCO2)
+**Every 5 seconds (sensor interval):**
+- Clear LED ring
+- LDR read
+- Show updated LED (hue from temperature)
 
-| ENS160 Pin | ESP32-C3 Pin |
-|---|---|
-| VCC | 3.3V |
-| GND | GND |
-| SDA | GPIO8 |
-| SCL | GPIO9 |
-| ADDR | GND → address `0x53` / 3.3V → address `0x52` |
+**Every 20ms (LED update):**
+- Calculate target hue from sensorTemp
+- Smooth transition (±20 LSBs per update)
+- Apply gamma correction
+- Show on ring
 
-### LDR — Light Detection
+**Every 5 seconds (MQTT publish):**
+- Local MQTT: publish telemetry
+- If commissioned: update alertTemp, alertHum, alertCO2
+- If first connection: publish attributes once
 
-Wire as a voltage divider with a 10kΩ pull-down resistor:
+**Every 30 seconds (health log):**
+- Log free heap, uptime, WiFi status, MQTT status, RSSI
 
-```
-3.3V ── LDR ── GPIO2 ── 10kΩ ── GND
-```
-
-Adjust `LDR_THRESHOLD` in `config.h` to suit your environment. Default is `2900` — ADC values above this are read as light ON.
-
-### NeoPixel Ring (12 LEDs)
-
-| NeoPixel Pin | ESP32-C3 Pin |
-|---|---|
-| VCC | 5V |
-| GND | GND |
-| DIN | GPIO3 |
+**WiFi fallback logic:**
+- If WiFi disconnected for >30s: re-enable AP
+- Retry STA every 120s if commissioned and credentials exist
+- If reconnected: disable AP, enable mDNS
 
 ---
 
-## Firmware Architecture
+## Local MQTT (local_mqtt.cpp)
 
-```
-├── include/
-│   ├── config.h          — Pin definitions, timing, thresholds, TB server config
-│   ├── secrets.h         — WiFi credentials, ThingsBoard provision keys (gitignored)
-│   ├── sensors.h         — Shared sensor state (single source of truth for all sensors)
-│   ├── mqtt.h            — MQTT public API
-│   ├── provisioning.h    — Provisioning public API and state machine enum
-│   ├── web_server.h      — Web server public API
-│   └── wifi_config.h     — WiFi configuration public API
-│
-├── src/
-│   ├── main.cpp          — setup() and loop(): sensor reads, LED, MQTT publish
-│   ├── mqtt.cpp          — MQTT connection, telemetry and attribute publishing
-│   ├── provisioning.cpp  — HTTP and MQTT provisioning flows, NVS token storage
-│   ├── web_server.cpp    — HTTP server, HTML web UI, threshold persistence
-│   ├── wifi_config.cpp   — WiFi credential storage, AP+STA connection management
-│   └── sensors/
-│       ├── shtc3.cpp/h   — SHTC3 temperature & humidity driver
-│       ├── ens160.cpp/h  — ENS160 air quality driver
-│       └── ldr.cpp/h     — LDR light detection driver
-│
-└── test/
-    └── native/           — Host-native unit tests 
+### Initialization
+
+```cpp
+localMqttInit()
+├── Load sensor type from NVS (device/sensor_type)
+├── Load broker IP/port from NVS (broker/host, broker/port)
+├── Set MQTT server (broker IP, port 1883)
+├── Attempt connection
+└── Log connection status
 ```
 
-### Key Design Decisions
+### Connection
 
-**`sensors.h` is the single source of truth for all sensor state.** No module should include `sensors/shtc3.h` or `sensors/ens160.h` directly — all shared variables are declared as `extern` in `sensors.h` and defined in their respective `.cpp` files.
+- Non-blocking: attempts every 5 seconds if disconnected
+- Client ID: `ESP32C3-{MAC_NO_COLON}`
+- No username/password (local broker)
+- Keep-alive: 30s
+- Socket timeout: 5s
+- Buffer size: 1024 bytes
 
-**WiFi runs in `WIFI_AP_STA` mode at all times.** The AP is always available for configuration even when connected to a router.
+### Publishing
 
-**AP SSID is unique per unit** — derived from the last 4 characters of the MAC address (e.g. `ESP32C3_Hotspot_61D4`). This allows multiple units on the same network to be distinguished.
+**Telemetry (every 5 seconds):**
 
-**MQTT token is stored in NVS** under the `provision` namespace. On boot, `provisioningInit()` loads it. If empty and WiFi is connected, `provisioningRequest()` runs HTTP provisioning automatically.
+Topic: `sensors/{DEVICE_ID}/{MEASUREMENT_TYPE}`
 
-**Attributes are re-sent on every fresh MQTT connection** (including reconnects) using the `wasConnected` edge detection pattern in `main.cpp`.
+Device IDs by type:
+- Type 1: `ENV_{LAST_4_MAC_CHARS}` (e.g., `ENV_61D4`)
+- Type 2: `SOIL_{LAST_4_MAC_CHARS}`
+- Type 3: `MIN_{LAST_4_MAC_CHARS}`
 
-### Data Flow
+Measurement types:
+- Type 1: `telemetry`
+- Type 2: `soil`
+- Type 3: `mineral`
 
-```
-Sensors (2s interval)
-    │
-    ▼
-Global state in sensors.h
-    │
-    ├──► LED ring (20ms interval) — hue from sensorTemp
-    │
-    ├──► Web server /sensors endpoint — polled every 3s by browser
-    │
-    └──► MQTT telemetry (5s interval) ──► ThingsBoard Cloud
-              │
-              └──► MQTT attributes (on connect) ──► ThingsBoard Cloud
-```
-
-### MQTT Payloads
-
-**Telemetry** (`v1/devices/me/telemetry`):
+Example payload (Type 1, ~900 bytes):
 ```json
 {
-  "temperature": 22.50,
-  "humidity": 55.00,
-  "alert_temp": false,
-  "alert_hum": false,
-  "aqi": 2,
-  "aqi_label": "Good",
-  "tvoc": 120,
-  "eco2": 650,
-  "air_quality_status": "Normal",
-  "light_on": true
+  "device_id": "ENV_61D4",
+  "timestamp": "2024-05-25T14:30:45Z",
+  "reading": {
+    "sensor_type": 1,
+    "sensor_type_label": "environment",
+    "firmware": "1.0.0",
+    "rssi": -65,
+    "temperature": 22.50,
+    "humidity": 55.00,
+    "co2": 650,
+    "eco2": 650,
+    "co2_label": "Good",
+    "co2_valid": true,
+    "alert_temp": false,
+    "alert_temp_num": 0,
+    "alert_hum": false,
+    "alert_hum_num": 0,
+    "alert_co2": false,
+    "alert_co2_num": 0,
+    "light_on": true,
+    "light_on_num": 1
+  }
 }
 ```
 
-**Attributes** (`v1/devices/me/attributes`):
+**Attributes (every 60 seconds, forced after reconnect):**
+
+Topic: `sensors/{DEVICE_ID}/attributes`
+
 ```json
 {
-  "mac": "8856A67561D4",
-  "ip": "192.168.1.42",
-  "rssi": -65,
-  "firmware": "1.0.0",
-  "highTempThreshold": 30.0,
-  "highHumThreshold": 80.0,
-  "highTvocThreshold": 500,
-  "highEco2Threshold": 1000
+  "device_id": "ENV_61D4",
+  "timestamp": "2024-05-25T14:30:45Z",
+  "reading": {
+    "mac": "A4CF12AA61D4",
+    "ip": "192.168.0.42",
+    "rssi": -65,
+    "firmware": "1.0.0",
+    "sensor_type": 1,
+    "sensor_type_label": "environment",
+    "highTempThreshold": 30.00,
+    "lowTempThreshold": 5.00,
+    "highHumThreshold": 80.00,
+    "lowHumThreshold": 20.00,
+    "highEco2Threshold": 1000.00
+  }
 }
 ```
 
+### Broker Configuration
+
+**Load from NVS (broker namespace):**
+```cpp
+gBrokerHost = localMqttGetBrokerIP();   // defaults to LOCAL_MQTT_SERVER from config.h
+gBrokerPort = localMqttGetBrokerPort(); // defaults to 1883
+```
+
+**Set dynamically via web API:**
+```cpp
+POST /set_broker?ip=192.168.0.50&port=1883
+```
+
+Persists to NVS for next boot.
+
 ---
 
-## Web Endpoints Reference
+## Web Server (web_server.cpp)
 
-All endpoints served on port 80. Accessible at `192.168.4.1` via AP or at the device LAN IP.
+### Captive Portal
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/` | Web UI (single-page HTML) |
-| `GET` | `/sensors` | Live sensor data as JSON |
-| `GET` | `/wifi` | Current SSID and connection status |
-| `GET` | `/scan` | Scan available WiFi networks |
-| `POST` | `/set_wifi` | Save WiFi credentials and connect |
-| `GET` | `/device_info` | Device MAC and name |
-| `GET` | `/prov_status` | Whether a ThingsBoard token is saved |
-| `POST` | `/provision` | Trigger HTTP provisioning to ThingsBoard |
-| `POST` | `/set_token` | Manually save a ThingsBoard token |
-| `GET` | `/get_thresh` | Get current alert thresholds |
-| `GET` | `/set_thresh` | Set alert thresholds (`temp`, `hum`, `tvoc`, `eco2` as query params) |
+Auto-redirects unknown URLs to `/` via HTTP 302:
+- `/hotspot-detect.html`
+- `/library/test/success.html`
+- `/success.txt`
+- `/generate_204`
+- `/gen_204`
+- All other unknown URLs
 
-### `/sensors` Response
+Triggers iOS/Android captive portal popup.
+
+### Single-Page HTML UI (const HTML_PAGE[])
+
+**Modern dark theme** with:
+- Device info card (MAC, IP, firmware, mDNS)
+- Live sensor data (temp, humidity, CO2, light)
+- WiFi connection UI (scan, select, connect)
+- Alert thresholds (editable, persistent)
+- Device log terminal (circular buffer display)
+- Factory reset button
+- Sensor type selector (pre-commissioning only)
+
+**JavaScript features:**
+- Auto-refresh sensors every 3s
+- Auto-refresh device info every 5s
+- Auto-refresh logs every 1s
+- Scan networks, select SSID
+- Save thresholds with validation
+- Clear log buffer
+
+### Endpoints
+
+**GET /sensors**
 ```json
 {
   "temp": 22.5,
   "hum": 55.0,
-  "aqi": 2,
-  "aqi_label": "Good",
-  "tvoc": 120,
-  "eco2": 650,
-  "aqi_status": "Normal",
-  "light_on": true
-}
-```
-
-### `/set_wifi` Request
-```
-POST /set_wifi
-Content-Type: application/x-www-form-urlencoded
-
-ssid=MyNetwork&pass=mypassword&secure=true
-```
-
-Pass `secure=false` for open networks — the password field will be cleared server-side.
-
-### Captive Portal
-
-The following URLs redirect to `/` to trigger the OS captive portal popup on iOS and Android:
-`/hotspot-detect.html`, `/generate_204`, `/gen_204`, `/success.txt`, and all unknown URLs via `onNotFound`.
-
----
-
-## ThingsBoard Setup Guide
-
-### 1. Create a Device Profile
-
-In ThingsBoard Cloud → **Profiles → Device Profiles → Add Profile**:
-- Name: `PROTO_BF_DEVICES`
-- Transport: MQTT
-- Provisioning: **Allow creating new devices**
-
-### 2. Configure Provisioning Keys
-
-Under the device profile provisioning settings, copy the generated key and secret into `secrets.h`:
-
-```cpp
-#define TB_PROVISION_KEY    "your_provision_key"
-#define TB_PROVISION_SECRET "your_provision_secret"
-```
-
-### 3. `secrets.h` Setup
-
-Create `include/secrets.h` — this file is gitignored, never commit it:
-
-```cpp
-#pragma once
-
-#define HOME_SSID           "YourWiFiSSID"
-#define HOME_PASSWORD       "YourWiFiPassword"
-#define AP_PASSWORD         "YourAPPassword"
-#define TB_PROVISION_KEY    "your_provision_key"
-#define TB_PROVISION_SECRET "your_provision_secret"
-```
-
-### 4. First Boot Provisioning
-
-On first boot with WiFi connected, the device automatically calls `POST https://thingsboard.cloud/api/v1/provision` with the device name (`ESP32-{MAC}`), provision key and secret. On success the returned access token is saved to NVS and used for all future MQTT connections — no manual steps required.
-
-To re-provision, erase the NVS `provision` namespace or call `provisioningClearToken()`.
-
-### 5. Dashboard Setup
-
-To show all units on a single dashboard without manual device assignment:
-- Add an **Entities widget**
-- Set datasource to **Device type alias** → `PROTO_BF_DEVICES`
-
-> Group assignment via REST API requires ThingsBoard PE. On the free Cloud plan, Device type aliases are the correct approach.
-
-### 6. Alerts
-
-Thresholds are pushed as device attributes on every MQTT connect. Use them in ThingsBoard alarm rules to trigger notifications when `alert_temp` or `alert_hum` telemetry keys become `true`.
-
----
-
-## Docker Local Infrastructure
-
-A complete local monitoring stack runs in Docker on a **Raspberry Pi host**, mirroring the cloud architecture for development and testing without relying on external services. The ESP32-C3 devices publish telemetry via MQTT to the Pi-hosted services.
-
-### Architecture
-
-```
-ESP32-C3 Devices
-    ↓ (MQTT)
-    ├──► Mosquitto (MQTT Broker)
-    │         ↓ (subscribes)
-    │    Telegraf (Metrics Collector)
-    │         ↓ (writes)
-    │    InfluxDB (Time-Series DB)
-    │         ↓ (queries)
-    │    Grafana (Dashboards)
-    │
-    └──► (optional) Direct to InfluxDB
-```
-
-### Services
-
-| Service | Port | Purpose | URL |
-|---|---|---|---|
-| **Mosquitto** | 1883 | MQTT broker for device telemetry | `mqtt://localhost:1883` |
-| **InfluxDB** | 8086 | Time-series database for metrics | `http://localhost:8086` |
-| **Telegraf** | 8125 | MQTT → InfluxDB pipeline | Internal |
-| **Grafana** | 3000 | Real-time dashboards & visualization | `http://localhost:3000` |
-
-### Quick Start
-
-```bash
-# Start all services
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-
-# Stop services
-docker-compose down
-
-# Stop and remove all data
-docker-compose down -v
-```
-
-### Service Access
-
-**Grafana Dashboard**
-- URL: `http://localhost:3000`
-- Default credentials: `admin` / `admin123`
-- Pre-configured datasource: InfluxDB
-
-**InfluxDB Console**
-- URL: `http://localhost:8086`
-- Default credentials: `admin` / `admin123`
-- Organization: `smartfarm`
-- Bucket: `sensors`
-
-**Mosquitto MQTT Broker**
-- Host: `localhost`
-- Port: `1883` (MQTT) / `9001` (WebSocket)
-- Credentials: `admin` / `admin`
-- Topics:
-  - `v1/devices/me/telemetry` — Device telemetry from ESP32
-  - `v1/devices/me/attributes` — Device attributes
-  - `esp32c3/+/sensors` — Per-device sensor data
-  - `esp32c3/+/status` — Per-device status
-
-### Device Telemetry Flow
-
-When the ESP32-C3 publishes to Mosquitto:
-
-1. **Mosquitto** receives the MQTT message on topic `v1/devices/me/telemetry`
-2. **Telegraf** subscribes to all device topics, parses JSON telemetry, and extracts fields:
-   - Temperature, humidity, AQI, TVOC, eCO2, light status, alert flags
-3. **InfluxDB** stores metrics with timestamps and metadata (device MAC, IP, firmware version)
-
-### Sample Telemetry (ESP32 → Mosquitto)
-
-```json
-{
-  "temperature": 22.50,
-  "humidity": 55.00,
+  "co2": 650,
+  "co2_label": "Good",
   "alert_temp": false,
   "alert_hum": false,
-  "aqi": 2,
-  "aqi_label": "Good",
-  "tvoc": 120,
-  "eco2": 650,
-  "air_quality_status": "Normal",
-  "light_on": true
+  "alert_co2": false,
+  "scd40_ok": true,
+  "light_on": true,
+  "ldr_ok": true
 }
 ```
 
-### Creating Custom Dashboards in Grafana
-
-1. Open Grafana at `http://localhost:3000`
-2. **+ Create → Dashboard**
-3. **Add Panel** and select **InfluxDB** as datasource
-4. Use Flux queries to visualize metrics:
-
-```flux
-from(bucket: "sensors")
-  |> range(start: -24h)
-  |> filter(fn: (r) => r._measurement == "sensor_telemetry")
-  |> filter(fn: (r) => r._field == "temperature")
-  |> aggregateWindow(every: 5m, fn: mean)
+**POST /set_wifi** (form-urlencoded)
+```
+ssid=MyNetwork&pass=password123&secure=true
+```
+Returns:
+```json
+{"ok": true, "ip": "192.168.0.100", "mdns": "bossfarm-61d4.local"}
 ```
 
-### Troubleshooting Docker
-
-**Services won't start:**
-```bash
-# Check service health
-docker-compose ps
-
-# View detailed logs
-docker-compose logs <service_name>
+**GET /device_info**
+```json
+{
+  "device_id": "A4CF12AA61D4",
+  "device_name": "ESP32-A4CF12AA61D4",
+  "mdns": "bossfarm-61d4.local",
+  "ip": "192.168.0.100",
+  "rssi": -65,
+  "firmware": "1.0.0",
+  "commissioned": true
+}
 ```
 
-**Mosquitto connection refused:**
-```bash
-# Test MQTT connectivity
-mqtt_sub -h localhost -t '#' -u admin -P admin
+**GET /get_thresh, POST /set_thresh**
+- `temp`: max temperature threshold (°C)
+- `temp_low`: min temperature threshold
+- `hum`: max humidity threshold (%)
+- `hum_low`: min humidity threshold
+- `co2`: max CO2 threshold (ppm)
+
+**GET /get_sensor_type, POST /set_sensor_type**
+- GET returns: `{"sensor_type": 1, "label": "environment"}`
+- POST param: `type=1|2|3`
+
+**GET /scan**
+Returns JSON array of WiFi networks:
+```json
+[
+  {"ssid": "MyNetwork", "rssi": -45, "secure": true},
+  {"ssid": "OpenNet", "rssi": -65, "secure": false}
+]
 ```
 
-**InfluxDB showing no data:**
-- Ensure Telegraf is running and configured with correct MQTT/InfluxDB credentials
-- Check Telegraf logs: `docker-compose logs telegraf`
-- Verify MQTT topic subscriptions match what ESP32 publishes
-
-**Grafana datasource error:**
-- Verify InfluxDB is healthy: `docker-compose ps`
-- Check the datasource configuration in Grafana settings
-- Ensure the API token matches `INFLUXDB_INIT_ADMIN_TOKEN` in docker-compose.yml
-
-### Raspberry Pi Setup
-
-The Docker stack is optimized to run on Raspberry Pi (ARM architecture). All container images use multi-architecture builds compatible with Raspberry Pi 3/4/5.
-
-**Pi Host Requirements:**
-- Raspberry Pi 3+ (minimum 2GB RAM recommended)
-- Raspberry Pi OS or similar Linux distribution
-- Docker Engine 19.03+ and Docker Compose
-- 2GB+ free disk space for database volumes
-
-**Installation on Raspberry Pi:**
-```bash
-# Install Docker
-curl -fsSL https://get.docker.com -o get-docker.sh | sh
-
-# Add pi user to docker group
-sudo usermod -aG docker pi
-
-# Install Docker Compose
-sudo apt-get install docker-compose
+**GET /logs**
+Circular log buffer (last 40 lines):
+```json
+{
+  "seq": 12345,
+  "lines": [
+    "[Boot] WiFi OK — IP: 192.168.0.100",
+    "[SCD40] T:22.8°C H:53.3% CO2:644 ppm (Good)",
+    "[LocalMQTT] connected weedsync.local:1883"
+  ]
+}
 ```
 
-**Running on Pi:**
-```bash
-# Clone/navigate to project
-cd /path/to/ESP32C3_SM_BF_prototype
-
-# Start Docker stack (may take longer on Pi)
-docker-compose up -d
-
-# Monitor startup (especially InfluxDB, which initializes on first run)
-docker-compose logs -f
-
-# Access Grafana from Pi's IP
-# http://<pi-ip>:3000
-```
-
-**Network Configuration for Remote Access:**
-If accessing Grafana/InfluxDB from a machine other than the Pi:
-```bash
-# Find Pi's IP address
-hostname -I
-
-# Access Grafana
-http://<pi-ip>:3000
-
-# Configure ESP32 MQTT broker IP
-# In device web UI, set MQTT host to Pi's IP (not localhost)
-```
+**POST /factory_reset**
+Clears all NVS namespaces: `provision`, `netcfg`, `thresholds`, `device`, `broker`
 
 ---
 
-## Build, Flash & Test
+## NVS Persistence (Preferences)
 
-### Requirements
+### Namespaces
 
-- [PlatformIO](https://platformio.org/) (VS Code extension or CLI)
-- Python 3.x
-- USB data cable (not charge-only — this is a common cause of upload failures)
-
-### Build & Flash
-
-```bash
-# Build only
-pio run -e lolin_c3_mini
-
-# Build and flash
-pio run -e lolin_c3_mini --target upload
-
-# Serial monitor
-pio device monitor --baud 115200
+**`netcfg`** — WiFi configuration
+```cpp
+prefs.putString("ssid", ssid);
+prefs.putString("pass", pass);
 ```
 
-> If upload fails with a serial exception, hold the **BOOT** button on the ESP32-C3 while clicking upload, release when `Connecting....` appears in the terminal.
-
-### Clean Build
-
-If you suspect PlatformIO is uploading a cached binary:
-
-```bash
-pio run --target clean
-pio run -e lolin_c3_mini --target upload
+**`thresholds`** — Alert thresholds
+```cpp
+prefs.putFloat("temp", 30.0f);
+prefs.putFloat("temp_low", 5.0f);
+prefs.putFloat("hum", 80.0f);
+prefs.putFloat("hum_low", 20.0f);
+prefs.putFloat("co2", 1000.0f);
 ```
 
-### Running Tests
-
-```bash
-# All native tests (no hardware required)
-pio test -e native
-
-# Single suite
-pio test -e native --filter "native/test_threshold_logic"
-
-# Verbose
-pio test -e native -vvv
+**`device`** — Device configuration
+```cpp
+prefs.putBool("commissioned", true);
+prefs.putUChar("sensor_type", 1);
 ```
 
-See `test/README.md` for full test suite documentation.
+**`broker`** — Local MQTT broker settings
+```cpp
+prefs.putString("host", "192.168.0.50");
+prefs.putUShort("port", 1883);
+```
 
-### Multi-Unit Debug Setup
+**`provision`** — ThingsBoard token (if enabled)
+```cpp
+prefs.putString("token", "abc123...");
+prefs.putString("device_name", "ESP32-A4CF12AA61D4");
+```
 
-When running multiple units simultaneously, assign each a different AP channel to avoid 2.4GHz interference:
-
-| Unit | Channel |
-|---|---|
-| Unit 1 | 1 |
-| Unit 2 | 6 |
-| Unit 3 | 11 |
+### Loading on Boot
 
 ```cpp
-// main.cpp — change per unit
-WiFi.softAP(apSsid.c_str(), AP_PASSWORD, 11); // channels 1, 6, or 11
+wifiConfigBegin()       // Load from netcfg
+loadThresholdsFromNVS() // Load from thresholds
+loadSensorType()        // Load from device
+loadBroker()            // Load from broker
 ```
-
-### Device Discovery
-
-`discover.html` (project root) is a standalone browser tool that scans your local subnet and lists all online units. Open it on a machine connected to the same WiFi, enter your subnet (e.g. `192.168.1`) and hit **Scan Network**. Each card shows live sensor data and links directly to that unit's web UI.
 
 ---
 
-## Known Issues & Notes
+## Commissioning Model
 
-- `WiFi.disconnect(false)` must be used — passing `true` shuts off the radio and prevents connection
-- ENS160 requires ~3 minutes warm-up and ~1 hour on first ever power-on for accurate readings
-- The 300-byte MQTT telemetry buffer must be updated if new fields are added to the payload
-- `secrets.h` is excluded from version control — each developer must create their own copy from the template above
+**Not commissioned (first boot):**
+1. AP enabled, WiFi not connected
+2. Web UI visible at `192.168.4.1`
+3. No MQTT publishing
+4. Sensor type selector shown (1=Env, 2=Soil, 3=Mineral)
+
+**Commissioning:**
+1. Select WiFi, enter password
+2. Connect to network
+3. Device marked commissioned: `device/commissioned = true`
+4. AP stays on, WiFi connected
+5. MQTT starts publishing
+
+**After commissioning:**
+- Sensor type selector hidden
+- Broker and threshold UI available
+- AP re-enables if WiFi drops for 30s
+- Reconnects every 120s if disconnected
+
+---
+
+## LED Ring (NeoPixel)
+
+### Hue Mapping
+
+Temperature → Hue conversion:
+```cpp
+float norm = constrain((sensorTemp - TEMP_MIN) / (TEMP_MAX - TEMP_MIN), 0.0f, 1.0f);
+uint16_t newHue = (uint16_t)((1.0f - norm) * 43690);
+// 15°C (TEMP_MIN) → 43690 (blue)
+// 35°C (TEMP_MAX) → 0 (red)
+```
+
+### LED Update (20ms interval)
+
+- Smooth hue transition: ±20 LSBs per update
+- Saturation: 255 (full color)
+- Brightness: 200 (gamma-corrected)
+- Ring update applied every 20ms
+
+### States
+
+**Before sensor init:**
+- Rainbow breathe (error state, sensor not OK)
+
+**After sensor init:**
+- Temperature-mapped hue
+- Smooth transitions
+
+---
+
+## Factory Reset
+
+**Button:** GPIO4, active LOW
+
+**Logic:**
+1. Press detected → start timer
+2. Hold >5 seconds → execute reset
+3. Release before 5s → cancel
+
+**Reset clears:**
+- `provision` namespace (ThingsBoard token)
+- `netcfg` namespace (WiFi credentials)
+- `thresholds` namespace (alert settings)
+- `device` namespace (commissioning flag, sensor type)
+- `broker` namespace (MQTT broker IP/port)
+
+**Result:** Device reboots into unconfigured state, AP visible again.
+
+---
+
+## Configuration (config.h)
+
+```cpp
+// Access Point
+#define AP_SSID             "ESP32C3_Hotspot"
+
+// Hardware Pins
+#define NEOPIXEL_PIN        3
+#define I2C_SDA             7
+#define I2C_SCL             6
+#define LDR_PIN             0
+#define FACTORY_RESET_PIN   4
+
+// Timing
+#define SENSOR_INTERVAL     5000   // 5 seconds
+#define LED_INTERVAL        20     // 20ms
+
+// Temperature Range (for LED hue)
+#define TEMP_MIN            15.0f
+#define TEMP_MAX            35.0f
+
+// Thresholds
+#define LDR_THRESHOLD       50
+
+// Local MQTT (default)
+#define LOCAL_MQTT_SERVER   "weedsync.local"
+#define LOCAL_MQTT_PORT     1883
+
+// mDNS
+#define MDNS_PREFIX         "bossfarm"
+
+// Device
+#define FIRMWARE_VERSION    "1.0.0"
+#define SENSOR_TYPE_DEFAULT 1  // 1=Environment, 2=Soil, 3=Mineral
+```
+
+---
+
+## Sensor Types
+
+### Type 1: Environment
+- **Topic:** `sensors/ENV_{MAC}/telemetry`
+- **Fields:** temperature, humidity, CO2, light
+- **Use case:** General environmental monitoring
+
+### Type 2: Soil
+- **Topic:** `sensors/SOIL_{MAC}/soil`
+- **Fields:** EC (electrical conductivity), RH (relative humidity)
+- **Use case:** Soil monitoring (extensible for additional sensors)
+
+### Type 3: Mineral
+- **Topic:** `sensors/MIN_{MAC}/mineral`
+- **Fields:** EC, N, P, K (nitrogen, phosphorus, potassium)
+- **Use case:** Mineral content tracking (extensible for soil nutrient sensors)
+
+**Current implementation:** Types 2 & 3 have placeholder payloads. Extend by adding actual sensor drivers and populating the fields in `localMqttPublish()`.
+
+---
+
+## Alert Thresholds
+
+**Calculation (in main loop):**
+```cpp
+alertTemp = (sensorTemp > threshTemp) || (sensorTemp < threshTempLow);
+alertHum  = (sensorHum  > threshHum)  || (sensorHum  < threshHumLow);
+alertCO2  = (sensorCO2  > threshCO2);
+```
+
+**Thresholds trigger on >strictly greater than, not equal.**
+
+**Defaults (config.h via web UI):**
+- `threshTemp`: 30.0°C
+- `threshTempLow`: 5.0°C
+- `threshHum`: 80.0%
+- `threshHumLow`: 20.0%
+- `threshCO2`: 1000.0 ppm
+
+**Persistence:**
+- Loaded from NVS on boot
+- Saved via `POST /set_thresh`
+- Published to MQTT attributes every 60s
+
+---
+
+## Feature Flags
+
+**ThingsBoard (disabled by default):**
+```cpp
+static const bool thingsBoardEnabled = false;
+```
+
+When disabled:
+- `provisioning.cpp` still compiled
+- MQTT provisioning loop doesn't run
+- `mqttPublish()` and `mqttPublishAttributes()` are no-ops
+- No cloud connectivity
+
+To enable: Set `thingsBoardEnabled = true` in `main.cpp` and populate `secrets.h` with provisioning credentials.
+
+---
+
+## Logging
+
+**Circular buffer (40 lines):**
+- New messages append to `_logBuf[_logHead % 40]`
+- `_logHead` increments each log
+- Served via `GET /logs` endpoint
+- Displayed in web UI terminal
+
+**Log sources:**
+- `[Boot]` — startup messages
+- `[WiFi]` — WiFi connection events
+- `[LocalMQTT]` — MQTT connection and publish status
+- `[SCD40]` — sensor data, errors
+- `[LDR]` — light detection status
+- `[Thresh]` — threshold updates
+- `[Sys]` — health metrics (heap, uptime, WiFi, MQTT, RSSI)
+
+---
+
+## Testing
+
+**Native unit tests** (no hardware required):
+```bash
+pio test -e native
+```
+
+Covers:
+- Sensor validation (temp, humidity, CO2 ranges)
+- Threshold logic (alert calculations)
+- WiFi config validation
+- MQTT payload building
+- Provisioning JSON parsing
+- AQI label mapping
+
+See `test/native/` for implementation.
+
+---
+
+## Known Limitations & Future Work
+
+- **Soil & Mineral types:** Placeholder payloads only — implement actual sensor drivers
+- **ThingsBoard:** Disabled by default, not actively maintained
+- **Buffer sizes:** MQTT payload 1024 bytes, log 40 lines — increase if needed
+- **WiFi security:** No WPA3 (ESP32-C3 limitation)
+- **I2C:** Single bus, single device (SCD40 only)
+- **Power:** Always-on AP draws ~100mA extra vs STA-only mode
+
+---
+
+## Build & Deployment
+
+```bash
+# Build
+pio run -e lolin_c3_mini
+
+# Flash
+pio run -e lolin_c3_mini --target upload
+
+# Monitor
+pio device monitor --baud 115200
+
+# Clean build
+pio run --target clean && pio run -e lolin_c3_mini --target upload
+```
+
+**Environment:** PlatformIO with Arduino framework, ESP32-C3 Lolin mini board.
