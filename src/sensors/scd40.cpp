@@ -28,8 +28,6 @@ static constexpr uint16_t CMD_GET_DATA_READY_STATUS      = 0xE4B8;
 static constexpr uint16_t CMD_GET_SERIAL_NUMBER          = 0x3682;
 static constexpr uint16_t CMD_GET_SENSOR_VARIANT         = 0x202F;
 
-// Keep this command defined for later, but do NOT use it during normal init.
-// Your working diagnostic sketch does not enable ASC before start measurement.
 static constexpr uint16_t CMD_SET_ASC_ENABLED            = 0x2416;
 
 // ── Timing ───────────────────────────────────────────────────────────────────
@@ -409,9 +407,6 @@ void scd40Init() {
 
     readSensorVariant();
 
-    // IMPORTANT:
-    // Do not enable ASC here. Your standalone diagnostic sketch does not do it.
-    // Keeping ASC untouched makes this init sequence closer to the working sketch.
     Serial.println("[SCD40] ASC untouched");
 
     delay(20);

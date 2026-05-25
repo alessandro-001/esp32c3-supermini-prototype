@@ -15,6 +15,7 @@ static WiFiClient   wifiClient;
 static PubSubClient mqtt(wifiClient);
 static String       gToken;
 
+// ── MQTT ─────────────────────────────────────────────────────────────────────
 static void mqttConnect() {
     if (WiFi.status() != WL_CONNECTED) return;
     if (mqtt.connected()) return;
@@ -34,6 +35,7 @@ static void mqttConnect() {
     }
 }
 
+// Callback for incoming messages (e.g. attribute updates, RPCs).
 void mqttInit(const String& token) {
     gToken = token;
     mqtt.setServer(TB_SERVER, TB_PORT);
@@ -41,6 +43,7 @@ void mqttInit(const String& token) {
     mqttConnect();
 }
 
+// Callback for incoming messages (e.g. attribute updates, RPCs).
 void mqttSetToken(const String& token) {
     if (gToken != token) {
         gToken = token;
@@ -49,6 +52,7 @@ void mqttSetToken(const String& token) {
     }
 }
 
+// Callback for incoming messages (e.g. attribute updates, RPCs).
 void mqttHandle() {
     if (gToken.isEmpty()) return;
     mqtt.loop();
@@ -61,6 +65,7 @@ void mqttHandle() {
 
 bool mqttIsConnected() { return mqtt.connected(); }
 
+// Publish telemetry to Dashboard.
 void mqttPublish() {
     if (!mqtt.connected()) return;
     char payload[256];
@@ -86,6 +91,7 @@ void mqttPublish() {
     Serial.printf("[MQTT] Published: %s\n", payload);
 }
 
+// Publish device attributes to Dashboard.
 void mqttPublishAttributes() {
     if (!mqtt.connected()) return;
     char payload[384];
@@ -113,6 +119,7 @@ void mqttPublishAttributes() {
     Serial.printf("[MQTT] Attributes: %s\n", payload);
 }
 
+// Gracefully disconnect from MQTT broker.
 void mqttDisconnect() {
     if (mqtt.connected()) {
         mqtt.disconnect();

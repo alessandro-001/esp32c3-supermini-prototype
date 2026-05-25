@@ -8,7 +8,7 @@
 static const unsigned long HOLD_MS      = 5000;
 static unsigned long       _pressStart  = 0;
 static bool                _holding     = false;
-static bool                _armed       = false; // debounce: button was LOW first
+static bool                _armed       = false; 
 
 void factoryResetInit() {
     pinMode(FACTORY_RESET_PIN, INPUT_PULLUP);
@@ -20,7 +20,6 @@ void factoryResetHandle() {
     bool pressed = (digitalRead(FACTORY_RESET_PIN) == LOW);
 
     if (pressed && !_holding) {
-        // Debounce — confirm still LOW after 50ms before arming
         delay(50);
         if (digitalRead(FACTORY_RESET_PIN) != LOW) return;
         _holding    = true;
