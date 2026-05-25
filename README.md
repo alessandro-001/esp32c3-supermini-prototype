@@ -1,4 +1,4 @@
-# BOSS FARM Smart Monitor — Firmware Implementation
+# IES-WI-C3A Smart Monitor — Firmware Implementation
 
 
 ![ESP32-C3](https://img.shields.io/badge/ESP32--C3-Lolin_C3_Mini-blue?style=flat-square)
