@@ -1,17 +1,17 @@
 # BOSS FARM Smart Monitor — Firmware Implementation
 
-ESP32-C3 firmware for environmental monitoring with local MQTT publishing, persistent NVS storage, and dynamic sensor type configuration.
-
----
 
 ![ESP32-C3](https://img.shields.io/badge/ESP32--C3-Lolin_C3_Mini-blue?style=flat-square)
 ![PlatformIO](https://img.shields.io/badge/PlatformIO-Arduino-orange?style=flat-square)
-![SCD40](https://img.shields.io/badge/SCD40-CO2_Sensor-00a6d6?style=flat-square)
+![SCD40](https://img.shields.io/badge/SCD40-CO2,_Temperature,_Humidity_Sensor-00a6d6?style=flat-square)
 ![LDR](https://img.shields.io/badge/LDR-Light_Detection-yellow?style=flat-square)
 ![NeoPixel](https://img.shields.io/badge/NeoPixel-WS2812B-purple?style=flat-square)
 ![Local MQTT](https://img.shields.io/badge/Local_MQTT-Mosquitto-green?style=flat-square)
 ![Firmware](https://img.shields.io/badge/Firmware-v1.0.0-lightgrey?style=flat-square)
  
+---
+ESP32-C3 firmware for environmental monitoring with local MQTT publishing, persistent NVS storage, and dynamic sensor type configuration.
+
 ---
 
 ## Architecture Overview
