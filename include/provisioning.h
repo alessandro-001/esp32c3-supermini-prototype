@@ -18,7 +18,6 @@ enum ProvisioningState {
 // Returns the token to be used for MQTT (from NVS or freshly provisioned)
 String provisioningInit();
 
-// Send HTTP provisioning request to ThingsBoard, save token to NVS
 // Returns token on success, empty string on failure
 // REQUIRED by webserver.cpp handleProvision()
 String provisioningRequest();

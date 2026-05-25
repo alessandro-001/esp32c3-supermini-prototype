@@ -331,11 +331,6 @@ void localMqttPublish() {
 
   if (gSensorType == 1) {
     // Environment sensor.
-    // Docker/API uses measurement "telemetry".
-    // main.py alarm logic expects fields like:
-    // temperature, humidity, tvoc, eco2.
-    //
-    // This firmware has SCD40 CO2, so send it as both "co2" and "eco2".
     if (timestamp.length() > 0) {
       snprintf(
         payload,
@@ -435,10 +430,7 @@ void localMqttPublish() {
     }
   } else if (gSensorType == 2) {
     // Soil sensor.
-    // Docker/API uses measurement "soil".
-    // main.py alarm logic expects soil fields: ec, rh.
-    //
-    // Replace these placeholder values with your real soil sensor readings.
+    //* Replace these placeholder values with your real soil sensor readings.
     float soilEc = 0.0f;
     float soilRh = 0.0f;
 
@@ -493,10 +485,7 @@ void localMqttPublish() {
     }
   } else {
     // Mineral sensor.
-    // Docker/API uses measurement "mineral".
-    // main.py alarm logic expects mineral fields: ec, n, p, k.
-    //
-    // Replace these placeholder values with your real mineral sensor readings.
+    //* Replace these placeholder values with your real mineral sensor readings.
     float mineralEc = 0.0f;
     float mineralN = 0.0f;
     float mineralP = 0.0f;

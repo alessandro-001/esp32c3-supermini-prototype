@@ -8,13 +8,10 @@
 
 //! ── Wi-Fi Configuration ───────────────────────────────────────────────────────
 
-// NOTE: prefs is NOT kept as a module-level open handle — each function
-// opens and closes its own handle to avoid NVS namespace conflicts.
-// (Bug 5 fix: wifiConfigBegin() was leaving prefs open permanently.)
-
 static String gSsid;
 static String gPass;
 
+// Escape special characters in JSON strings (e.g. SSID) to prevent malformed JSON.
 static String escapeJson(const String& input) {
     String output;
     output.reserve(input.length() + 10);
@@ -34,6 +31,7 @@ static String escapeJson(const String& input) {
     return output;
 }
 
+// Scan for Wi-Fi networks and return a JSON array of SSID, RSSI, and security type.
 String wifiScanNetworks() {
     Serial.println("[WiFi] Scanning networks...");
 
@@ -59,10 +57,8 @@ String wifiScanNetworks() {
     return json;
 }
 
+// Initialize Wi-Fi configuration by loading saved credentials from NVS.
 void wifiConfigBegin(const char* defaultSsid, const char* defaultPass) {
-    // BUG 5 FIX: open, read, then CLOSE the handle.
-    // Original code left prefs open permanently, causing NVS conflicts in
-    // wifiConfigSave() and on any subsequent Preferences use from another module.
     Preferences prefs;
     prefs.begin("netcfg", true); // read-only
 
@@ -79,6 +75,7 @@ void wifiConfigBegin(const char* defaultSsid, const char* defaultPass) {
     Serial.printf("[WiFi] Loaded SSID: %s\n", gSsid.isEmpty() ? "(none)" : gSsid.c_str());
 }
 
+// Save Wi-Fi credentials to NVS. Returns true on success, false on failure (e.g. invalid SSID or password).
 bool wifiConfigSave(const String& ssid, const String& pass) {
     if (ssid.length() == 0) return false;
     if (pass.length() > 0 && pass.length() < 8) {
@@ -89,8 +86,6 @@ bool wifiConfigSave(const String& ssid, const String& pass) {
     gSsid = ssid;
     gPass = pass;
 
-    // BUG 5 FIX: open a fresh handle for writing (old code relied on the
-    // module-level prefs being left open by wifiConfigBegin, which is fragile).
     Preferences prefs;
     prefs.begin("netcfg", false);
     prefs.putString("ssid", gSsid);
@@ -116,10 +111,6 @@ bool wifiConfigConnect(uint32_t timeoutMs) {
         return true;
     }
 
-    // BUG 2 FIX: must use WIFI_AP_STA, not WIFI_STA.
-    // Original code used WIFI_STA which silently tears down the AP that
-    // main.cpp carefully started in WIFI_AP_STA mode, preventing the web UI
-    // from being accessible during and after the STA connection attempt.
     WiFi.mode(WIFI_AP_STA);
 
     WiFi.persistent(false);
@@ -128,9 +119,6 @@ bool wifiConfigConnect(uint32_t timeoutMs) {
     WiFi.setSleep(false);
     esp_wifi_set_ps(WIFI_PS_NONE);
 
-    // BUG 3 FIX: give the driver time to settle after mode change before
-    // calling begin(). The ESP32-C3 WiFi stack on espressif32@6.9.0 is
-    // sensitive to mode changes immediately followed by begin().
     delay(100);
 
     WiFi.begin(gSsid.c_str(), gPass.c_str());
@@ -160,10 +148,12 @@ bool wifiConfigConnect(uint32_t timeoutMs) {
     return false;
 }
 
+// Check if Wi-Fi credentials are saved in NVS.
 bool wifiConfigHasCredentials() {
     return gSsid.length() > 0;
 }
 
+// Clear saved Wi-Fi credentials from NVS and reset in-memory variables.
 void wifiConfigClear() {
     Preferences prefs;
     prefs.begin("netcfg", false);
@@ -174,9 +164,8 @@ void wifiConfigClear() {
     Serial.println("[WiFi] Credentials cleared");
 }
 
+// Start Wi-Fi Access Point for provisioning. This is a fallback in case the AP fails to start in main.cpp.
 void wifiApStart() {
-    // This function is a fallback — in normal operation the AP is started
-    // directly in main.cpp via WiFi.softAP() in WIFI_AP_STA mode.
     WiFi.mode(WIFI_AP_STA);
     delay(200);
 

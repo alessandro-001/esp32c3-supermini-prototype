@@ -38,13 +38,11 @@
 
 //! ── Sensor Type ──────────────────────────────────────────────────────────────
 // 1 = environment, 2 = soil, 3 = mineral
-// Stored in NVS, selected in web UI during first registration
 #define SENSOR_TYPE_DEFAULT 1
 
 //! ── Local MQTT (Raspberry Pi / Docker) ──────────────────────────────────────
 #define LOCAL_MQTT_SERVER   "weedsync.local"
 #define LOCAL_MQTT_PORT     1883
-// Topic is dynamic: IESWIC3A/{sensor_type}/data — built at runtime in local_mqtt.cpp
 
 //! ── mDNS ─────────────────────────────────────────────────────────────────────
 #define MDNS_PREFIX         "bossfarm"

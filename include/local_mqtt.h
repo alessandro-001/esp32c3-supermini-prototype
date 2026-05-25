@@ -13,6 +13,5 @@ void     localMqttSetBroker(const String& ip, uint16_t port);
 String   localMqttGetBrokerIP();
 uint16_t localMqttGetBrokerPort();
 
-// Sensor type: 1=environment, 2=soil, 3=mineral
 void    localMqttSetSensorType(uint8_t type);
 uint8_t localMqttGetSensorType();

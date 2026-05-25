@@ -174,22 +174,6 @@ void setup() {
 void loop() {
     uint32_t now = millis();
 
-    /*
-      CHANGE:
-      Service network-facing tasks first.
-
-      OLD CODE DID SENSOR WORK FIRST:
-        delay(1);
-        factoryResetHandle();
-        scd40Read();
-        ...
-        webServerHandle();
-        ...
-        localMqttHandle();
-
-      That means a slow sensor read, SCD40 recovery delay, Wi-Fi retry, HTTP POST,
-      or LED/ADC section can starve the web server and MQTT keepalive.
-    */
     webServerHandle();
     localMqttHandle();
 
@@ -200,31 +184,12 @@ void loop() {
 
     factoryResetHandle();
 
-    /*
-      Give the Wi-Fi stack a tiny yield, but do not use long delay() calls here.
-      Long blocking delays are one reason /device_info and / can accept a socket
-      but fail to send the response body.
-    */
+    // Short delay to prevent watchdog and allow background tasks to run.
     delay(1);
 
-    /*
-      Sensor reads should be internally interval-gated and non-blocking.
-      scd40Read() should return quickly when no data is ready.
-    */
+    // Sensor reads every 2s, staggered to avoid doing them both at the same time.
     scd40Read();
 
-    /*
-      LDR read with LED off to avoid interference.
-
-      OLD CODE:
-        ring.clear();
-        ring.show();
-        delay(20);
-        ldrRead();
-
-      CHANGE:
-      20 ms is not huge, but still service web/MQTT immediately before and after.
-    */
     static uint32_t lastLdrCheck = 0;
     if (now - lastLdrCheck >= SENSOR_INTERVAL) {
         lastLdrCheck = now;
@@ -248,10 +213,7 @@ void loop() {
         warnedSCD40 = true;
     }
 
-    /*
-      LED update.
-      Keep this short.
-    */
+    // NeoPixel update every 500ms.
     if (now - lastLedUpdate >= LED_INTERVAL) {
         lastLedUpdate = now;
         if (sensorOK) {
@@ -267,11 +229,7 @@ void loop() {
         ring.show();
     }
 
-    /*
-      MQTT publish every 5s.
-      localMqttHandle() is already called continuously above, so this only sends
-      telemetry when connected.
-    */
+    // Telemetry publish every 5s.
     static uint32_t lastMqttPublish = 0;
     static bool     sentAttributes  = false;
     static bool     wasConnected    = false;
@@ -295,10 +253,7 @@ void loop() {
         localMqttPublish();
     }
 
-    /*
-      Periodic health.
-      CHANGE: include RSSI so you can correlate failures with Wi-Fi quality.
-    */
+    // Health log every 30s.
     static uint32_t lastHealthLog = 0;
     if (now - lastHealthLog >= 30000) {
         lastHealthLog = now;
@@ -316,13 +271,7 @@ void loop() {
                       WiFi.RSSI());
     }
 
-    /*
-      AP fallback + STA retry.
-
-      This stays near the end because wifiConfigConnect(10000) can block for up
-      to 10 seconds. For best production behavior, convert Wi-Fi reconnect to a
-      non-blocking state machine later.
-    */
+    // Wi-Fi and MQTT connection management.
     static uint32_t wifiLostAt   = 0;
     static bool     apReEnabled  = false;
     static uint32_t lastStaRetry = 0;
@@ -350,12 +299,7 @@ void loop() {
             Serial.println("[WiFi] Retrying STA connection...");
             logPush("[WiFi] Retry attempt...");
 
-            /*
-              WARNING:
-              This is still blocking up to 10s. It is kept here so the patch is
-              small. The next reliability step is a non-blocking Wi-Fi reconnect
-              state machine.
-            */
+            
             bool ok = wifiConfigConnect(10000);
             if (ok) {
                 if (apReEnabled) {
