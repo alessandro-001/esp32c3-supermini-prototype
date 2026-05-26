@@ -18,8 +18,6 @@
 // ── NeoPixel ──────────────────────────────────────────────────────────────────
 Adafruit_NeoPixel ring(NUM_LEDS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 static uint32_t lastLedUpdate = 0;
-static uint16_t targetHue     = 32768;
-static uint16_t rainbowHue    = 0;
 
 // ── Feature flags ─────────────────────────────────────────────────────────────
 static const bool thingsBoardEnabled = false;
@@ -213,19 +211,31 @@ void loop() {
         warnedSCD40 = true;
     }
 
-    // NeoPixel update every 500ms.
+    // NeoPixel update every LED_INTERVAL ms.
+    // States (priority order):
+    //   BLUE   — not commissioned (device never registered)
+    //   RED    — commissioned but WiFi disconnected
+    //   YELLOW — WiFi up but MQTT broker disconnected
+    //   GREEN  — WiFi up and MQTT broker connected (data flowing)
     if (now - lastLedUpdate >= LED_INTERVAL) {
         lastLedUpdate = now;
-        if (sensorOK) {
-            float norm      = constrain((sensorTemp - TEMP_MIN) / (TEMP_MAX - TEMP_MIN), 0.0f, 1.0f);
-            uint16_t newHue = (uint16_t)((1.0f - norm) * 43690);
-            if      (targetHue < newHue) targetHue += min((uint16_t)20, (uint16_t)(newHue - targetHue));
-            else if (targetHue > newHue) targetHue -= min((uint16_t)20, (uint16_t)(targetHue - newHue));
-            ring.fill(ring.gamma32(ring.ColorHSV(targetHue, 255, 200)));
+
+        uint32_t colour;
+        bool commissioned = deviceIsCommissioned();
+        bool wifiUp       = (WiFi.status() == WL_CONNECTED);
+        bool mqttUp       = localMqttIsConnected();
+
+        if (!commissioned) {
+            colour = ring.Color(0, 0, 40);      // Blue  — not registered
+        } else if (!wifiUp) {
+            colour = ring.Color(40, 0, 0);      // Red   — no WiFi
+        } else if (!mqttUp) {
+            colour = ring.Color(40, 20, 0);     // Amber — WiFi OK, no broker
         } else {
-            rainbowHue += 128;
-            ring.fill(ring.gamma32(ring.ColorHSV(rainbowHue, 255, 200)));
+            colour = ring.Color(0, 40, 0);      // Green — fully connected
         }
+
+        ring.fill(colour);
         ring.show();
     }
 
