@@ -714,3 +714,4 @@ pio run --target clean && pio run -e lolin_c3_mini --target upload
 
 ![Device Web UI Dashboard](assets/ui-dashboard.png)
 ![Device Web UI Dashboard](assets/ui-discovery.png)
+![Device Web UI Dashboard](assets/pcb3d.png)
