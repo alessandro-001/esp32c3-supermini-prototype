@@ -8,6 +8,7 @@
 #include <WiFi.h>
 #include <Preferences.h>
 #include <time.h>
+#include <ESPmDNS.h>
 
 // Firmware MQTT target:
 // ESP32-C3 -> Raspberry Pi MQTT broker -> mqtt_to_influx.py -> InfluxDB
@@ -224,6 +225,26 @@ static void loadBroker() {
 // Connection
 // ─────────────────────────────────────────────────────────────────────────────
 
+static bool resolveBrokerAddress(IPAddress& outIp) {
+  // Prefer literal IPs to avoid resolver dependency.
+  if (outIp.fromString(gBrokerHost)) {
+    return true;
+  }
+
+  // .local names are mDNS; resolve through mDNS first when available.
+  if (gBrokerHost.endsWith(".local")) {
+    IPAddress mdnsIp = MDNS.queryHost(gBrokerHost.c_str());
+    if (mdnsIp != INADDR_NONE) {
+      outIp = mdnsIp;
+      return true;
+    }
+  }
+
+  // Fallback to regular DNS resolver.
+  return WiFi.hostByName(gBrokerHost.c_str(), outIp);
+}
+
+
 static void localMqttConnect() {
   if (WiFi.status() != WL_CONNECTED) {
     return;
@@ -235,10 +256,24 @@ static void localMqttConnect() {
 
   String clientId = "ESP32C3-" + macNoColon();
 
-  Serial.printf("[LocalMQTT] Connecting to %s:%u as %s ... ",
+  IPAddress brokerIp;
+  if (!resolveBrokerAddress(brokerIp)) {
+    Serial.printf("[LocalMQTT] Resolve failed for %s (wifi=%d rssi=%d)\n",
+                  gBrokerHost.c_str(),
+                  WiFi.status(),
+                  WiFi.RSSI());
+    logPush("[LocalMQTT] resolve failed host=" + gBrokerHost);
+    return;
+  }
+
+  localMqtt.setServer(brokerIp, gBrokerPort);
+
+  Serial.printf("[LocalMQTT] Connecting to %s (%s):%u as %s ... ",
                 gBrokerHost.c_str(),
+                brokerIp.toString().c_str(),
                 gBrokerPort,
                 clientId.c_str());
+
 
   bool ok = localMqtt.connect(clientId.c_str());
 

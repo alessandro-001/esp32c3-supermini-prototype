@@ -708,4 +708,9 @@ pio device monitor --baud 115200
 pio run --target clean && pio run -e lolin_c3_mini --target upload
 ```
 
-**Environment:** PlatformIO with Arduino framework, ESP32-C3 Lolin mini board.
+**Environment:** PlatformIO with Arduino framework, ESP32-C3 Lolin mini board (ESP32-C3-SuperMini)
+
+## Web AP Screenshots
+
+![Device Web UI Dashboard](assets/ui-dashboard.png)
+![Device Web UI Dashboard](assets/ui-discovery.png)
