@@ -2,18 +2,26 @@
 #include "config.h"
 #include "sensors.h"
 #include "web_server.h"
-#include "driver/gpio.h"
 #include <Arduino.h>
 
+//#include "driver/gpio.h"
 bool ldrLightOn = false;
 bool ldrOK      = false;
 static uint32_t _lastRead = 0;
 
+// void ldrInit() {
+//     gpio_reset_pin((gpio_num_t)LDR_PIN);
+//     gpio_set_direction((gpio_num_t)LDR_PIN, GPIO_MODE_INPUT);
+//     gpio_set_pull_mode((gpio_num_t)LDR_PIN, GPIO_PULLDOWN_ONLY);
+//     //analogSetPinAttenuation(LDR_PIN, ADC_11db);
+//     delay(100);
+//     for (int i = 0; i < 5; i++) { analogRead(LDR_PIN); delay(5); }
+//     ldrOK = false;
+//     Serial.printf("✓ LDR on GPIO%d\n", LDR_PIN);
+// }
+
 void ldrInit() {
-    gpio_reset_pin((gpio_num_t)LDR_PIN);
-    gpio_set_direction((gpio_num_t)LDR_PIN, GPIO_MODE_INPUT);
-    gpio_set_pull_mode((gpio_num_t)LDR_PIN, GPIO_PULLDOWN_ONLY);
-    analogSetPinAttenuation(LDR_PIN, ADC_11db);
+    pinMode(LDR_PIN, INPUT);
     delay(100);
     for (int i = 0; i < 5; i++) { analogRead(LDR_PIN); delay(5); }
     ldrOK = false;
