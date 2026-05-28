@@ -10,8 +10,8 @@
 #define NUM_LEDS            12
 #define BRIGHTNESS          10
 
-#define I2C_SDA             7
-#define I2C_SCL             6
+#define I2C_SDA             6 // 7(C3) 6(C6)
+#define I2C_SCL             7 // 6(C3) 7(C6)
 
 #define LDR_PIN             0
 #define LDR_THRESHOLD       50
