@@ -34,7 +34,7 @@
 
 //! ── Device Identity ──────────────────────────────────────────────────────────
 #define DEVICE_GROUP        "PROTO_BF_DEVICES"
-#define FIRMWARE_VERSION    "1.0.0"
+#define FIRMWARE_VERSION    "2.0.0"
 
 //! ── Sensor Type ──────────────────────────────────────────────────────────────
 // 1 = environment, 2 = soil, 3 = mineral
