@@ -27,7 +27,6 @@ static void mqttConnect() {
     String clientId = "ESP32-" + provisioningDeviceId();
     Serial.printf("[MQTT] Connecting as %s...\n", clientId.c_str());
     if (mqtt.connect(clientId.c_str(), gToken.c_str(), NULL)) {
-        Serial.println("[MQTT] ✅ Connected to ThingsBoard");
         mqtt.subscribe("v1/devices/me/attributes");
         mqtt.subscribe("v1/devices/me/rpc/request/+");
     } else {
@@ -38,7 +37,6 @@ static void mqttConnect() {
 // Callback for incoming messages (e.g. attribute updates, RPCs).
 void mqttInit(const String& token) {
     gToken = token;
-    mqtt.setServer(TB_SERVER, TB_PORT);
     mqtt.setBufferSize(512);
     mqttConnect();
 }

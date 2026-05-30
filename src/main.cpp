@@ -20,7 +20,6 @@ Adafruit_NeoPixel ring(NUM_LEDS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 static uint32_t lastLedUpdate = 0;
 
 // ── Feature flags ─────────────────────────────────────────────────────────────
-static const bool thingsBoardEnabled = false;
 
 // ── Commissioning ─────────────────────────────────────────────────────────────
 static const char* DEVICE_NVS_NS    = "device";
@@ -175,10 +174,7 @@ void loop() {
     webServerHandle();
     localMqttHandle();
 
-    if (thingsBoardEnabled) {
-        provisioningHandle();
-        mqttHandle();
-    }
+    
 
     factoryResetHandle();
 
@@ -247,18 +243,7 @@ void loop() {
     if (now - lastMqttPublish >= 5000) {
         lastMqttPublish = now;
 
-        if (thingsBoardEnabled) {
-            bool isConnected = mqttIsConnected();
-            if (!wasConnected && isConnected) sentAttributes = false;
-            wasConnected = isConnected;
-            if (isConnected) {
-                mqttPublish();
-                if (!sentAttributes) {
-                    mqttPublishAttributes();
-                    sentAttributes = true;
-                }
-            }
-        }
+        
 
         localMqttPublish();
     }
