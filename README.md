@@ -64,8 +64,6 @@ wifi_config.cpp/h               (WiFi credential storage & connection)
 factory_reset.cpp/h             (GPIO4 button, 5s hold detection)
 └── factoryResetExecute()       (clears all NVS namespaces)
 
-provisioning.cpp/h              (ThingsBoard provisioning — DISABLED by default)
-└── (Optional: HTTP provisioning flow, HTTP-only, not used in main flow)
 ```
 
 ### Global State (sensors.h)
@@ -183,7 +181,7 @@ Humidity_% = 100 * word2 / 65535
 
 1. **Web server handle** (non-blocking)
 2. **Local MQTT handle** (non-blocking, 5s reconnect)
-3. **Provisioning handle** (if ThingsBoard enabled)
+3. **Provisioning handle** (optional)
 4. **Factory reset check** (GPIO4 hold detection)
 5. **Delay 1ms** (prevent watchdog, allow background tasks)
 
@@ -316,7 +314,7 @@ Topic: `sensors/{DEVICE_ID}/attributes`
 #define MDNS_PREFIX         "bossfarm"
 
 // Device
-#define FIRMWARE_VERSION    "1.0.0"
+#define FIRMWARE_VERSION    "2.0.0"
 #define SENSOR_TYPE_DEFAULT 1  // 1=Environment, 2=Soil, 3=Mineral
 ```
 
@@ -359,7 +357,7 @@ Alerts trigger on **strictly greater than** — equal does not trigger. Persiste
 | `thresholds` | `temp`, `temp_low`, `hum`, `hum_low`, `co2` | Alert thresholds |
 | `device` | `commissioned`, `sensor_type` | Device state |
 | `broker` | `host`, `port` | MQTT broker address |
-| `provision` | `token`, `device_name` | ThingsBoard (disabled) |
+| `provision` | `token`, `device_name` | Provisioning (disabled) |
 
 ---
 
@@ -430,7 +428,7 @@ Covers: sensor validation, threshold logic, WiFi config validation, MQTT payload
 ## Known Limitations & Future Work
 
 - **Soil & Mineral types:** Placeholder payloads only — implement actual sensor drivers
-- **ThingsBoard:** Disabled by default, not actively maintained
+- **Provisioning:** Disabled by default, not actively maintained
 - **Buffer sizes:** MQTT payload 1024 bytes, log 40 lines — increase if needed
 - **I2C:** Single bus, single device (SCD40 only)
 - **Power:** Always-on AP draws ~100mA extra vs STA-only mode

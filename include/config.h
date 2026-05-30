@@ -27,10 +27,7 @@
 #define TEMP_MIN            15.0f
 #define TEMP_MAX            35.0f
 
-//! ── ThingsBoard API ──────────────────────────────────────────────────────────
-#define TB_SERVER           "mqtt.thingsboard.cloud"
-#define TB_PORT             1883
-#define TB_HTTP_HOST        "https://thingsboard.cloud"
+//! (Provisioning host and platform-specific defines removed)
 
 //! ── Device Identity ──────────────────────────────────────────────────────────
 #define DEVICE_GROUP        "PROTO_BF_DEVICES"

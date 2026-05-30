@@ -85,15 +85,11 @@ String provisioningRequest() {
 
     StaticJsonDocument<256> doc;
     doc["deviceName"]            = deviceName;
-    doc["provisionDeviceKey"]    = TB_PROVISION_KEY;
-    doc["provisionDeviceSecret"] = TB_PROVISION_SECRET;
 
     String payload;
     serializeJson(doc, payload);
 
     HTTPClient http;
-    String url = String(TB_HTTP_HOST) + "/api/v1/provision";
-    http.begin(url);
     http.addHeader("Content-Type", "application/json");
 
     int    httpCode = http.POST(payload);
@@ -116,7 +112,7 @@ String provisioningRequest() {
 
     const char* status = resp["status"];
     if (!status || String(status) != "SUCCESS") {
-        Serial.printf("[Prov] TB status: %s\n", status ? status : "null");
+        Serial.printf("[Prov] status: %s\n", status ? status : "null");
         return "";
     }
 
@@ -191,7 +187,7 @@ String provisioningInit() {
         Serial.println("[Prov] No token in NVS — provisioning required");
     }
 
-    provMqtt.setServer(TB_SERVER, TB_PORT);
+    // provMqtt.setServer(...) removed (platform-specific)
     provMqtt.setCallback(provMqttCallback);
     provMqtt.setBufferSize(512);
 
@@ -257,8 +253,7 @@ void provisioningHandle() {
         case PROV_STATE_REQUESTING: {
             StaticJsonDocument<256> doc;
             doc["deviceName"]            = generateDeviceName();
-            doc["provisionDeviceKey"]    = TB_PROVISION_KEY;
-            doc["provisionDeviceSecret"] = TB_PROVISION_SECRET;
+            // provision keys removed
 
             String payload;
             serializeJson(doc, payload);
