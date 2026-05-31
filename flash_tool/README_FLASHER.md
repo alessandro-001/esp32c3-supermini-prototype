@@ -69,3 +69,6 @@ IESWIC6_v2_FLASHER/
    Start-Process "$env:TEMP\idf-env.exe" -ArgumentList "driver install --espressif" -Wait
    ```
    Then unplug and replug the ESP32-C6
+
+## Firmware Flash Tool GUI
+![Flash](../assets/flashtool.PNG)

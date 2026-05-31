@@ -442,3 +442,6 @@ Covers: sensor validation, threshold logic, WiFi config validation, MQTT payload
 
 ## PCBA 3D
 ![PCBA](assets/pcb3d.PNG)
+
+## Firmware Flash Tool GUI
+![Flash](assets/flashtool.PNG)
