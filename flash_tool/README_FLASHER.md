@@ -1,5 +1,7 @@
 # IES-WI-C6A x BossFarm — Flasher Tool (Developer Reference)
 
+![Python](https://img.shields.io/badge/Python-3.14-blue?style=flat-square) ![Tkinter](https://img.shields.io/badge/Tkinter-Tk%20GUI-orange?style=flat-square) ![pySerial](https://img.shields.io/badge/pyserial-pip%20install-green?style=flat-square) ![esptool](https://img.shields.io/badge/esptool-v4.8.1-lightgrey?style=flat-square) ![Bundle](https://img.shields.io/badge/Bundle-ZIP-purple?style=flat-square)
+
 ## How to create a new distributable zip
 
 Run these commands in the **VS Code terminal** every time you want to create a new bundle after updating the firmware:

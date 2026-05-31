@@ -7,7 +7,7 @@
 ![LDR](https://img.shields.io/badge/LDR-Light_Detection-yellow?style=flat-square)
 ![NeoPixel](https://img.shields.io/badge/NeoPixel-WS2812B-purple?style=flat-square)
 ![Local MQTT](https://img.shields.io/badge/Local_MQTT-Mosquitto-green?style=flat-square)
-![Firmware](https://img.shields.io/badge/Firmware-v1.0.0-lightgrey?style=flat-square)
+![Firmware](https://img.shields.io/badge/Firmware-v2.0.0-lightgrey?style=flat-square)
 
 ---
 ESP32-C6 firmware for environmental monitoring with local MQTT publishing, persistent NVS storage, and dynamic sensor type configuration.
