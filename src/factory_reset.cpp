@@ -2,6 +2,7 @@
 #include "config.h"
 #include <Preferences.h>
 #include <Arduino.h>
+#include <Adafruit_NeoPixel.h>
 
 //* Factory Reset — GPIO4 hold 5s or software trigger
 
@@ -53,7 +54,12 @@ void factoryResetExecute() {
         Serial.printf("[Reset]   cleared: %s\n", namespaces[i]);
     }
 
-    Serial.println("[Reset] Done — rebooting in 1s...");
-    delay(1000);
+    Serial.println("[Reset] Done — rebooting in 2s...");
+    extern Adafruit_NeoPixel ring;
+    ring.fill(ring.Color(40, 40, 40)); // White — reset complete
+    ring.show();
+    delay(2000);
     ESP.restart();
 }
+
+bool factoryResetIsHolding() { return _holding; }

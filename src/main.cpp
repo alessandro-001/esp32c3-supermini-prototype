@@ -221,7 +221,9 @@ void loop() {
         bool wifiUp       = (WiFi.status() == WL_CONNECTED);
         bool mqttUp       = localMqttIsConnected();
 
-        if (!commissioned) {
+        if (factoryResetIsHolding()) {
+            colour = ring.Color(40, 40, 0);     // Yellow — factory reset hold (overrides all other states)
+        } else if (!commissioned) {
             colour = ring.Color(0, 0, 40);      // Blue  — not registered
         } else if (!wifiUp) {
             colour = ring.Color(40, 0, 0);      // Red   — no WiFi

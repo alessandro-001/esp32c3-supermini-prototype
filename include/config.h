@@ -17,7 +17,7 @@
 #define LDR_THRESHOLD       50
 #define LDR_ENABLED         1
 
-#define FACTORY_RESET_PIN   4
+#define FACTORY_RESET_PIN   5 // 4 (old)
 
 //! ── Sensor & LED Timing ──────────────────────────────────────────────────────
 #define SENSOR_INTERVAL     5000
