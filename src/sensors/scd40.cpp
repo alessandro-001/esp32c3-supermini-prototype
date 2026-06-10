@@ -489,7 +489,8 @@ void scd40Read() {
         return;
     }
 
-    sensorTemp = f.temperature;
+    extern float tempOffset;
+    sensorTemp = f.temperature + tempOffset;
     sensorHum  = f.humidity;
     sensorCO2  = f.co2;
 

@@ -61,8 +61,8 @@ wifi_config.cpp/h               (WiFi credential storage & connection)
 ├── wifiConfigConnect()         (STA connection with timeout)
 └── wifiApStart()               (AP mode for configuration)
 
-factory_reset.cpp/h             (GPIO4 button, 5s hold detection)
-└── factoryResetExecute()       (clears all NVS namespaces)
+factory_reset.cpp/h             (GPIO5 button, 5s hold detection)
+└── factoryResetExecute()       (clears all NVS namespaces, white LED flash before reboot)
 
 ```
 
@@ -182,7 +182,7 @@ Humidity_% = 100 * word2 / 65535
 1. **Web server handle** (non-blocking)
 2. **Local MQTT handle** (non-blocking, 5s reconnect)
 3. **Provisioning handle** (optional)
-4. **Factory reset check** (GPIO4 hold detection)
+4. **Factory reset check** (GPIO5 hold detection)
 5. **Delay 1ms** (prevent watchdog, allow background tasks)
 
 **Every 5 seconds (sensor interval):**
@@ -191,10 +191,16 @@ Humidity_% = 100 * word2 / 65535
 - Show updated LED (status colour)
 
 **Every 20ms (LED update):**
-- Commissioned + WiFi + MQTT → Green
-- Commissioned + WiFi, no MQTT → Amber
-- Commissioned, no WiFi → Red
+- Factory reset button held → Yellow
 - Not commissioned → Blue
+- Commissioned, no WiFi → Red
+- Commissioned + WiFi, no MQTT → Amber
+- Commissioned + WiFi + MQTT → Green
+
+**Factory reset LED sequence:**
+- Button held (5s): Yellow
+- Reset complete: White (2s)
+- After reboot: Blue (not commissioned)
 
 **Every 5 seconds (MQTT publish):**
 - Local MQTT: publish telemetry
@@ -236,7 +242,7 @@ Example payload (Type 1):
   "reading": {
     "sensor_type": 1,
     "sensor_type_label": "environment",
-    "firmware": "1.0.0",
+    "firmware": "2.0.0",
     "rssi": -65,
     "temperature": 22.50,
     "humidity": 55.00,
@@ -268,7 +274,7 @@ Topic: `sensors/{DEVICE_ID}/attributes`
     "mac": "A4CF12AA61D4",
     "ip": "192.168.0.42",
     "rssi": -65,
-    "firmware": "1.0.0",
+    "firmware": "2.0.0",
     "sensor_type": 1,
     "sensor_type_label": "environment",
     "highTempThreshold": 30.00,
@@ -289,11 +295,13 @@ Topic: `sensors/{DEVICE_ID}/attributes`
 #define AP_SSID             "ESP32C3_Hotspot"
 
 // Hardware Pins — ESP32-C6
-#define NEOPIXEL_PIN        3
+#define NEOPIXEL_PIN        20
+#define NUM_LEDS            12
+#define BRIGHTNESS          10
 #define I2C_SDA             6   // ← swapped vs C3
 #define I2C_SCL             7   // ← swapped vs C3
 #define LDR_PIN             0
-#define FACTORY_RESET_PIN   4
+#define FACTORY_RESET_PIN   5
 
 // Timing
 #define SENSOR_INTERVAL     5000   // 5 seconds
@@ -315,6 +323,7 @@ Topic: `sensors/{DEVICE_ID}/attributes`
 
 // Device
 #define FIRMWARE_VERSION    "2.0.0"
+#define TEMP_OFFSET_DEFAULT  0.0f  // °C — applied to raw SCD40 temperature
 #define SENSOR_TYPE_DEFAULT 1  // 1=Environment, 2=Soil, 3=Mineral
 ```
 
@@ -354,7 +363,7 @@ Alerts trigger on **strictly greater than** — equal does not trigger. Persiste
 | Namespace | Keys | Purpose |
 |---|---|---|
 | `netcfg` | `ssid`, `pass` | WiFi credentials |
-| `thresholds` | `temp`, `temp_low`, `hum`, `hum_low`, `co2` | Alert thresholds |
+| `thresholds` | `temp`, `temp_low`, `hum`, `hum_low`, `co2`, `temp_offset` | Alert thresholds & temperature calibration |
 | `device` | `commissioned`, `sensor_type` | Device state |
 | `broker` | `host`, `port` | MQTT broker address |
 | `provision` | `token`, `device_name` | Provisioning (disabled) |
@@ -432,6 +441,7 @@ Covers: sensor validation, threshold logic, WiFi config validation, MQTT payload
 - **Buffer sizes:** MQTT payload 1024 bytes, log 40 lines — increase if needed
 - **I2C:** Single bus, single device (SCD40 only)
 - **Power:** Always-on AP draws ~100mA extra vs STA-only mode
+- **CO2 NVS key mismatch:** `loadThresholdsFromNVS` reads key `"eco2"` but `saveThresholdsToNVS` writes key `"co2"` — CO2 threshold resets to default (1000 ppm) after reboot. Pending fix.
 
 ---
 

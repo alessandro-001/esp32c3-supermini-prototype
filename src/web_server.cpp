@@ -297,8 +297,8 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
     </div>
     <div class="thresh-grid">
       <div class="thresh-item">
-        <label>🌡 Min Temp (°C)</label>
-        <input type="number" id="thresh-temp-low" step="0.5" min="-40" max="125" placeholder="5">
+        <label>🌡 Temp Offset (°C)</label>
+        <input type="number" id="thresh-temp-offset" step="0.1" min="-20" max="20" placeholder="0.0">
       </div>
       <div class="thresh-item">
         <label>🌡 Max Temp (°C)</label>
@@ -491,7 +491,7 @@ let selectedSecure = false;
 function loadThresholds() {
   fetch('/get_thresh').then(r => r.json()).then(th => {
     document.getElementById('thresh-temp').value     = th.temp;
-    document.getElementById('thresh-temp-low').value = th.temp_low;
+    document.getElementById('thresh-temp-offset').value = th.temp_offset || 0;
     document.getElementById('thresh-hum').value      = th.hum;
     document.getElementById('thresh-hum-low').value  = th.hum_low;
     document.getElementById('thresh-co2').value      = th.co2;
@@ -499,16 +499,15 @@ function loadThresholds() {
 }
 
 function saveThresholds() {
-  const temp    = parseFloat(document.getElementById('thresh-temp').value);
-  const tempLow = parseFloat(document.getElementById('thresh-temp-low').value);
-  const hum     = parseFloat(document.getElementById('thresh-hum').value);
-  const humLow  = parseFloat(document.getElementById('thresh-hum-low').value);
-  const co2     = parseFloat(document.getElementById('thresh-co2').value);
-  if ([temp, tempLow, hum, humLow, co2].some(isNaN)) { showMsg('Enter valid values for all thresholds', 'error'); return; }
-  if (tempLow >= temp) { showMsg('Min Temp must be lower than Max Temp', 'error'); return; }
-  if (humLow  >= hum)  { showMsg('Min Humidity must be lower than Max Humidity', 'error'); return; }
+  const temp   = parseFloat(document.getElementById('thresh-temp').value);
+  const offset = parseFloat(document.getElementById('thresh-temp-offset').value) || 0;
+  const hum    = parseFloat(document.getElementById('thresh-hum').value);
+  const humLow = parseFloat(document.getElementById('thresh-hum-low').value);
+  const co2    = parseFloat(document.getElementById('thresh-co2').value);
+  if ([temp, hum, humLow, co2].some(isNaN)) { showMsg('Enter valid values for all thresholds', 'error'); return; }
+  if (humLow >= hum) { showMsg('Min Humidity must be lower than Max Humidity', 'error'); return; }
   showMsg('Saving thresholds...', 'info');
-  fetch('/set_thresh?temp=' + temp + '&temp_low=' + tempLow + '&hum=' + hum + '&hum_low=' + humLow + '&co2=' + co2)
+  fetch('/set_thresh?temp=' + temp + '&hum=' + hum + '&hum_low=' + humLow + '&co2=' + co2 + '&temp_offset=' + offset)
     .then(r => r.text())
     .then(() => showMsg('✓ Thresholds saved!', 'success'))
     .catch(() => showMsg('Failed to save', 'error'));
@@ -1125,6 +1124,7 @@ function stopScan() {
 // ── Global threshold variables ────────────────────────────────────────────────
 float threshTemp    = 30.0f;
 float threshTempLow =  5.0f;
+float tempOffset = TEMP_OFFSET_DEFAULT;
 float threshHum     = 80.0f;
 float threshHumLow  = 20.0f;
 float threshCO2     = 1000.0f;
@@ -1177,6 +1177,7 @@ static void loadThresholdsFromNVS() {
     prefs.begin(THRESH_NVS_NS, true);
     threshTemp    = prefs.getFloat("temp",      30.0f);
     threshTempLow = prefs.getFloat("temp_low",   5.0f);
+    tempOffset    = prefs.getFloat("temp_offset", TEMP_OFFSET_DEFAULT);
     threshHum     = prefs.getFloat("hum",       80.0f);
     threshHumLow  = prefs.getFloat("hum_low",   20.0f);
     threshCO2     = prefs.getFloat("eco2",    1000.0f);
@@ -1185,14 +1186,15 @@ static void loadThresholdsFromNVS() {
                   threshTemp, threshTempLow, threshHum, threshHumLow, threshCO2);
 }
 
-static void saveThresholdsToNVS(float temp, float tempLow, float hum, float humLow, float co2) {
+static void saveThresholdsToNVS(float temp, float tempLow, float hum, float humLow, float co2, float offset) {
     Preferences prefs;
     prefs.begin(THRESH_NVS_NS, false);
-    prefs.putFloat("temp",     temp);
-    prefs.putFloat("temp_low", tempLow);
-    prefs.putFloat("hum",      hum);
-    prefs.putFloat("hum_low",  humLow);
-    prefs.putFloat("co2",      co2);
+    prefs.putFloat("temp",        temp);
+    prefs.putFloat("temp_low",    tempLow);
+    prefs.putFloat("hum",         hum);
+    prefs.putFloat("hum_low",     humLow);
+    prefs.putFloat("co2",         co2);
+    prefs.putFloat("temp_offset", offset);
     prefs.end();
 }
 
@@ -1386,11 +1388,13 @@ static void handleSetThresh() {
 
     if (server.hasArg("temp"))     threshTemp    = server.arg("temp").toFloat();
     if (server.hasArg("temp_low")) threshTempLow = server.arg("temp_low").toFloat();
+    if (server.hasArg("temp_offset")) tempOffset = server.arg("temp_offset").toFloat();
     if (server.hasArg("hum"))      threshHum     = server.arg("hum").toFloat();
     if (server.hasArg("hum_low"))  threshHumLow  = server.arg("hum_low").toFloat();
     if (server.hasArg("co2"))      threshCO2     = server.arg("co2").toFloat();  // lowercase co2
 
-    saveThresholdsToNVS(threshTemp, threshTempLow, threshHum, threshHumLow, threshCO2);
+    saveThresholdsToNVS(threshTemp, threshTempLow, threshHum, threshHumLow, threshCO2, tempOffset);
+
     Serial.printf("[Thresh] Saved — TempH:%.1f TempL:%.1f HumH:%.1f HumL:%.1f CO2:%.0f\n",
                   threshTemp, threshTempLow, threshHum, threshHumLow, threshCO2);
 
@@ -1431,10 +1435,10 @@ static void handleSetThresh() {
 }
 
 static void handleGetThresh() {
-    char buf[256];
+    char buf[300];
     snprintf(buf, sizeof(buf),
-             "{\"temp\":%.2f,\"temp_low\":%.2f,\"hum\":%.2f,\"hum_low\":%.2f,\"co2\":%.0f}",
-             threshTemp, threshTempLow, threshHum, threshHumLow, threshCO2);
+             "{\"temp\":%.2f,\"temp_low\":%.2f,\"hum\":%.2f,\"hum_low\":%.2f,\"co2\":%.0f,\"temp_offset\":%.2f}",
+             threshTemp, threshTempLow, threshHum, threshHumLow, threshCO2, tempOffset);
     server.send(200, "application/json", buf);
 }
 
