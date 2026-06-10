@@ -6,7 +6,7 @@
 #define AP_SSID             "ESP32C3_Hotspot"
 
 //! ── Hardware Pins ESP32-C3 ───────────────────────────────────────────────────
-#define NEOPIXEL_PIN        3
+#define NEOPIXEL_PIN        20 // 3 (old)
 #define NUM_LEDS            12
 #define BRIGHTNESS          10
 
