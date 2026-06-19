@@ -490,9 +490,12 @@ void scd40Read() {
     }
 
     extern float tempOffset;
+    extern float humOffset;
+    extern float co2Offset;
     sensorTemp = f.temperature + tempOffset;
-    sensorHum  = f.humidity;
-    sensorCO2  = f.co2;
+    sensorHum  = f.humidity + humOffset;
+    float rawCo2f = (float)f.co2 + co2Offset;
+    sensorCO2  = (uint16_t)(rawCo2f < 0.0f ? 0 : rawCo2f);
 
     alertTemp = (sensorTemp > threshTemp) || (sensorTemp < threshTempLow);
     alertHum  = (sensorHum  > threshHum)  || (sensorHum  < threshHumLow);

@@ -54,10 +54,11 @@ void ldrRead() {
         return;
     }
 
+    extern int ldrThresh;
     ldrOK      = true;
-    ldrLightOn = (minVal > LDR_THRESHOLD);  // high value = lit, low value = dark
+    ldrLightOn = (minVal > ldrThresh);  // high value = lit, low value = dark
     Serial.printf("[LDR] min=%d  valid=%d/5  thr=%d  light=%s\n",
-                  minVal, validCount, LDR_THRESHOLD, ldrLightOn ? "ON" : "OFF");
-    logPush("[LDR] min=" + String(minVal) + " thr=" + String(LDR_THRESHOLD) +
+                  minVal, validCount, ldrThresh, ldrLightOn ? "ON" : "OFF");
+    logPush("[LDR] min=" + String(minVal) + " thr=" + String(ldrThresh) +
             " → " + (ldrLightOn ? "ON" : "OFF"));
 }

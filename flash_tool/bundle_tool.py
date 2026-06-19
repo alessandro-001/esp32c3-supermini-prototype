@@ -34,7 +34,7 @@ EXCLUDE_PATTERNS = ["__pycache__", "*.pyc", ".git", ".gitignore", "*.zip", "_esp
 
 BANNER = """
 ╔══════════════════════════════════════════════╗
-║     IES-WI-C6A x BossFarm — Bundle Tool     ║
+║     IES-WI-C6A x BossFarm — Bundle Tool      ║
 ╚══════════════════════════════════════════════╝
 """
 

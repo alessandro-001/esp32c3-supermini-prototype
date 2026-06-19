@@ -7,6 +7,7 @@ import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox
 import subprocess
 import threading
+import time
 import os
 import sys
 import glob
@@ -81,6 +82,8 @@ class FlasherApp(tk.Tk):
         self._running = False
         self._proc = None
         self._port_map = {}
+        self._serial = None
+        self._monitoring = False
 
         self._build_ui()
         self._apply_theme()
@@ -148,6 +151,9 @@ class FlasherApp(tk.Tk):
         br.pack(fill="x", padx=PAD, pady=(4, PAD))
         ttk.Button(br, text="Clear Log", command=self._clear_log).pack(side="left")
         ttk.Button(br, text="Copy Log", command=self._copy_log).pack(side="left", padx=4)
+        self._monitor_btn = ttk.Button(br, text="📜 Serial Log",
+                                       command=self._toggle_monitor)
+        self._monitor_btn.pack(side="left", padx=4)
         self._status_lbl = tk.Label(br, text="Ready", font=("Consolas", 9))
         self._status_lbl.pack(side="left", padx=8)
         self._stop_btn = ttk.Button(br, text="Stop",
@@ -259,6 +265,10 @@ class FlasherApp(tk.Tk):
         self._status_lbl.configure(text=text, fg=color)
 
     def _start_flash(self):
+        # Release the serial port if a log is open, otherwise esptool can't claim it.
+        if self._monitoring:
+            self._stop_monitor()
+
         port = self._get_port()
         if not port or "No ports" in port:
             messagebox.showerror("No Port", "Please select a COM port first.")
@@ -381,6 +391,99 @@ class FlasherApp(tk.Tk):
         self._flash_btn.configure(state="normal")
         self._stop_btn.configure(state="disabled")
         self._running = False
+
+    # ── Serial monitor (boot-log capture for remote debugging) ───────────────
+    def _toggle_monitor(self):
+        if self._monitoring:
+            self._stop_monitor()
+        else:
+            self._start_monitor()
+
+    def _start_monitor(self):
+        if self._running:
+            messagebox.showinfo("Busy", "Wait for flashing to finish first.")
+            return
+        port = self._get_port()
+        if not port or "No ports" in port:
+            messagebox.showerror("No Port", "Please select a COM port first.")
+            return
+        try:
+            import serial
+        except ImportError:
+            messagebox.showerror("Missing pyserial",
+                                 "pyserial is not installed.\n"
+                                 "Run launch.bat — it installs pyserial automatically.")
+            return
+        try:
+            self._serial = serial.Serial(port, 115200, timeout=0.2)
+        except Exception as e:
+            messagebox.showerror("Port busy",
+                                 f"Could not open {port}:\n{e}\n\n"
+                                 "Close any other Serial Monitor using this port.")
+            return
+
+        self._monitoring = True
+        self._monitor_btn.configure(text="■ Stop Log")
+        self._set_status(f"Reading {port} @115200...", "#4a9eff")
+        self._log_line("─" * 60)
+        self._log_line(f"📜 Serial log on {port} @ 115200 baud", "info")
+        self._log_line("   If nothing appears, press the RST button on the board", "warn")
+        self._log_line("   (or unplug/replug USB) to capture a fresh boot log.", "warn")
+        self._log_line("─" * 60)
+
+        # Best-effort reset into run mode so we catch a fresh boot.
+        self._reset_pulse()
+
+        threading.Thread(target=self._read_serial, daemon=True).start()
+
+    def _reset_pulse(self):
+        # Classic auto-reset: DTR->boot(GPIO9) high=run, pulse RTS->EN low/high.
+        # A no-op on boards that don't route DTR/RTS to EN — harmless either way.
+        try:
+            self._serial.setDTR(False)   # GPIO9 high -> normal boot (not download)
+            self._serial.setRTS(True)    # EN low  -> hold in reset
+            time.sleep(0.05)
+            self._serial.setRTS(False)   # EN high -> release -> boots the app
+        except Exception:
+            pass
+
+    def _read_serial(self):
+        buf = b""
+        while self._monitoring and self._serial:
+            try:
+                data = self._serial.read(256)
+            except Exception as e:
+                self.after(0, lambda e=e: self._log_line(f"✘ Serial read error: {e}", "error"))
+                break
+            if not data:
+                continue
+            buf += data
+            while b"\n" in buf:
+                raw, buf = buf.split(b"\n", 1)
+                text = raw.decode("utf-8", errors="replace").rstrip("\r")
+                ll = text.lower()
+                if any(x in ll for x in ("error", "fail", "panic", "abort", "guru",
+                                         "fatal", "exception", "rst:", "boot:")):
+                    tag = "error"
+                elif any(x in ll for x in ("warn", "not found", "no response", "timeout")):
+                    tag = "warn"
+                elif any(x in ll for x in ("[ap]", "neopixel", "started", "complete",
+                                           "online", "✓", "setup")):
+                    tag = "success"
+                else:
+                    tag = "plain"
+                self.after(0, lambda t=text, g=tag: self._log_line(t, g))
+
+    def _stop_monitor(self):
+        self._monitoring = False
+        try:
+            if self._serial:
+                self._serial.close()
+        except Exception:
+            pass
+        self._serial = None
+        self._monitor_btn.configure(text="📜 Serial Log")
+        self._set_status("Serial log stopped", "#ffb347")
 
 
 if __name__ == "__main__":

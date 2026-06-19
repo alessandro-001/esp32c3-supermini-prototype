@@ -44,3 +44,17 @@
 
 //! ── mDNS ─────────────────────────────────────────────────────────────────────
 #define MDNS_PREFIX         "bossfarm"
+
+//! ── RS485 / Modbus RTU (MAX3485, see schematic) ─────────────────────────────
+#define RS485_TX_PIN          16    // TXD0 pad -> MAX3485 DI  (driven as UART1)
+#define RS485_RX_PIN          17    // RXD0 pad <- MAX3485 RO  (driven as UART1)
+#define RS485_DE_PIN          14    // RS485_FC -> DE+RE, HIGH=TX LOW=RX (module pin 19)
+
+#define RS485_TIMEOUT_MS      400   // per-transaction response timeout
+#define RS485_POLL_INTERVAL   SENSOR_INTERVAL   // poll every 5s
+#define RS485_MAX_FAILS       3     // consecutive failures before flagged unavailable
+
+#define WATER_SENSOR_ADDR     1     // CWT-OYS-PHEC default slave ID
+#define WATER_SENSOR_BAUD     9600  // CWT default: 9600,N,8,1
+#define SOIL_SENSOR_ADDR      1     // Halisense default slave ID
+#define SOIL_SENSOR_BAUD      4800  // Halisense default: 4800,N,8,1
