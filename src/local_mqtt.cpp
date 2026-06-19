@@ -3,6 +3,7 @@
 #include "config.h"
 #include "sensors.h"
 #include "web_server.h"
+#include "rs485_sensor.h"
 
 #include <PubSubClient.h>
 #include <WiFi.h>
@@ -465,10 +466,6 @@ void localMqttPublish() {
     }
   } else if (gSensorType == 2) {
     // Soil sensor.
-    //* Replace these placeholder values with your real soil sensor readings.
-    float soilEc = 0.0f;
-    float soilRh = 0.0f;
-
     if (timestamp.length() > 0) {
       snprintf(
         payload,
@@ -481,8 +478,17 @@ void localMqttPublish() {
             "\"sensor_type_label\":\"%s\","
             "\"firmware\":\"%s\","
             "\"rssi\":%d,"
-            "\"ec\":%.2f,"
-            "\"rh\":%.2f"
+            "\"sensor_ok\":%s,"
+            "\"moisture\":%.1f,"
+            "\"temperature\":%.1f,"
+            "\"ec\":%.0f,"
+            "\"ph\":%.1f,"
+            "\"n\":%u,"
+            "\"p\":%u,"
+            "\"k\":%u,"
+            "\"alert_moist\":%s,"
+            "\"alert_ec\":%s,"
+            "\"alert_ph\":%s"
           "}"
         "}",
         deviceId.c_str(),
@@ -491,8 +497,12 @@ void localMqttPublish() {
         sensorTypeLabel(gSensorType),
         FIRMWARE_VERSION,
         WiFi.RSSI(),
-        soilEc,
-        soilRh
+        boolText(soilOK),
+        soilMoist, soilTemp, soilEc, soilPh,
+        soilN, soilP, soilK,
+        boolText(alertSoilMoist),
+        boolText(alertSoilEc),
+        boolText(alertSoilPh)
       );
     } else {
       snprintf(
@@ -505,27 +515,35 @@ void localMqttPublish() {
             "\"sensor_type_label\":\"%s\","
             "\"firmware\":\"%s\","
             "\"rssi\":%d,"
-            "\"ec\":%.2f,"
-            "\"rh\":%.2f"
+            "\"sensor_ok\":%s,"
+            "\"moisture\":%.1f,"
+            "\"temperature\":%.1f,"
+            "\"ec\":%.0f,"
+            "\"ph\":%.1f,"
+            "\"n\":%u,"
+            "\"p\":%u,"
+            "\"k\":%u,"
+            "\"alert_moist\":%s,"
+            "\"alert_ec\":%s,"
+            "\"alert_ph\":%s"
           "}"
         "}",
         deviceId.c_str(),
+        timestamp.c_str(),
         gSensorType,
         sensorTypeLabel(gSensorType),
         FIRMWARE_VERSION,
         WiFi.RSSI(),
-        soilEc,
-        soilRh
+        boolText(soilOK),
+        soilMoist, soilTemp, soilEc, soilPh,
+        soilN, soilP, soilK,
+        boolText(alertSoilMoist),
+        boolText(alertSoilEc),
+        boolText(alertSoilPh)
       );
     }
   } else {
     // Mineral sensor.
-    //* Replace these placeholder values with your real mineral sensor readings.
-    float mineralEc = 0.0f;
-    float mineralN = 0.0f;
-    float mineralP = 0.0f;
-    float mineralK = 0.0f;
-
     if (timestamp.length() > 0) {
       snprintf(
         payload,
@@ -538,10 +556,12 @@ void localMqttPublish() {
             "\"sensor_type_label\":\"%s\","
             "\"firmware\":\"%s\","
             "\"rssi\":%d,"
-            "\"ec\":%.2f,"
-            "\"n\":%.2f,"
-            "\"p\":%.2f,"
-            "\"k\":%.2f"
+            "\"sensor_ok\":%s,"
+            "\"ph\":%.2f,"
+            "\"ec\":%.0f,"
+            "\"temperature\":%.1f,"
+            "\"alert_ph\":%s,"
+            "\"alert_ec\":%s"
           "}"
         "}",
         deviceId.c_str(),
@@ -550,10 +570,10 @@ void localMqttPublish() {
         sensorTypeLabel(gSensorType),
         FIRMWARE_VERSION,
         WiFi.RSSI(),
-        mineralEc,
-        mineralN,
-        mineralP,
-        mineralK
+        boolText(waterOK),
+        waterPh, waterEc, waterTemp,
+        boolText(alertWaterPh),
+        boolText(alertWaterEc)
       );
     } else {
       snprintf(
@@ -566,21 +586,24 @@ void localMqttPublish() {
             "\"sensor_type_label\":\"%s\","
             "\"firmware\":\"%s\","
             "\"rssi\":%d,"
-            "\"ec\":%.2f,"
-            "\"n\":%.2f,"
-            "\"p\":%.2f,"
-            "\"k\":%.2f"
+            "\"sensor_ok\":%s,"
+            "\"ph\":%.2f,"
+            "\"ec\":%.0f,"
+            "\"temperature\":%.1f,"
+            "\"alert_ph\":%s,"
+            "\"alert_ec\":%s"
           "}"
         "}",
         deviceId.c_str(),
+        timestamp.c_str(),
         gSensorType,
         sensorTypeLabel(gSensorType),
         FIRMWARE_VERSION,
         WiFi.RSSI(),
-        mineralEc,
-        mineralN,
-        mineralP,
-        mineralK
+        boolText(waterOK),
+        waterPh, waterEc, waterTemp,
+        boolText(alertWaterPh),
+        boolText(alertWaterEc)
       );
     }
   }

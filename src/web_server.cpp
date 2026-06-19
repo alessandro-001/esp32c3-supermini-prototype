@@ -11,6 +11,7 @@
 #include "provisioning.h"
 #include "mqtt.h"
 #include "local_mqtt.h"
+#include "rs485_sensor.h"
 #include <math.h>
 
 // ── Log buffer ────────────────────────────────────────────────────────────────
@@ -305,6 +306,10 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
         <input type="number" id="thresh-temp" step="0.5" min="-40" max="125" placeholder="30">
       </div>
       <div class="thresh-item">
+        <label>💧 Humidity Offset (%)</label>
+        <input type="number" id="thresh-hum-offset" step="0.1" min="-50" max="50" placeholder="0.0">
+      </div>
+      <div class="thresh-item">
         <label>💧 Min Humidity (%)</label>
         <input type="number" id="thresh-hum-low" step="1" min="0" max="100" placeholder="20">
       </div>
@@ -313,11 +318,91 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
         <input type="number" id="thresh-hum" step="1" min="0" max="100" placeholder="80">
       </div>
       <div class="thresh-item">
+        <label>💨 CO2 Offset (ppm)</label>
+        <input type="number" id="thresh-co2-offset" step="10" min="-5000" max="5000" placeholder="0">
+      </div>
+      <div class="thresh-item">
         <label>💨 Max CO2 (ppm)</label>
         <input type="number" id="thresh-co2" step="50" min="400" max="40000" placeholder="1000">
       </div>
+      <div class="thresh-item">
+        <label>💡 Light Threshold (0–4095)</label>
+        <input type="number" id="thresh-ldr-thresh" step="1" min="0" max="4095" placeholder="50">
+      </div>
     </div>
     <button class="btn-save" onclick="saveThresholds()">💾 Save Thresholds</button>
+  </div>
+
+    <!-- ══════════ SOIL 7-IN-1 SECTION (sensor type 2) ══════════ -->
+  <div class="card row-1col hidden" id="card-soil">
+    <div class="card-header">
+      <span class="card-icon">🌱</span>
+      <span class="card-title">Soil 7-in-1 Sensor (RS485)</span>
+      <span class="badge waiting" id="soil-status" style="margin-left:auto;">–</span>
+    </div>
+    <div class="sensor-grid" style="grid-template-columns:repeat(7,1fr);">
+      <div class="sensor-tile"><div class="sensor-tile-label">💧 Moisture</div>
+        <div class="sensor-tile-val" id="soil-moist">– <span style="font-size:0.7rem;color:var(--muted);">%</span></div></div>
+      <div class="sensor-tile"><div class="sensor-tile-label">🌡 Soil Temp</div>
+        <div class="sensor-tile-val" id="soil-temp">– <span style="font-size:0.7rem;color:var(--muted);">°C</span></div></div>
+      <div class="sensor-tile"><div class="sensor-tile-label">⚡ Soil EC</div>
+        <div class="sensor-tile-val" id="soil-ec">– <span style="font-size:0.7rem;color:var(--muted);">uS/cm</span></div></div>
+      <div class="sensor-tile"><div class="sensor-tile-label">🧪 Soil pH</div>
+        <div class="sensor-tile-val" id="soil-ph">–</div></div>
+      <div class="sensor-tile"><div class="sensor-tile-label">N</div>
+        <div class="sensor-tile-val" id="soil-n">– <span style="font-size:0.7rem;color:var(--muted);">mg/kg</span></div></div>
+      <div class="sensor-tile"><div class="sensor-tile-label">P</div>
+        <div class="sensor-tile-val" id="soil-p">– <span style="font-size:0.7rem;color:var(--muted);">mg/kg</span></div></div>
+      <div class="sensor-tile"><div class="sensor-tile-label">K</div>
+        <div class="sensor-tile-val" id="soil-k">– <span style="font-size:0.7rem;color:var(--muted);">mg/kg</span></div></div>
+    </div>
+    <div class="chart-container"><canvas id="soilChart"></canvas></div>
+    <div class="card-header" style="margin-top:8px;">
+      <span class="card-icon">⚠️</span><span class="card-title">Soil Alert Thresholds</span>
+    </div>
+    <div class="thresh-grid">
+      <div class="thresh-item"><label>💧 Min Moisture (%)</label>
+        <input type="number" id="th-smoist-low" step="1" min="0" max="100"></div>
+      <div class="thresh-item"><label>💧 Max Moisture (%)</label>
+        <input type="number" id="th-smoist-high" step="1" min="0" max="100"></div>
+      <div class="thresh-item"><label>⚡ Max EC (uS/cm)</label>
+        <input type="number" id="th-sec-high" step="50" min="0" max="20000"></div>
+      <div class="thresh-item"><label>🧪 Min pH</label>
+        <input type="number" id="th-sph-low" step="0.1" min="0" max="14"></div>
+      <div class="thresh-item"><label>🧪 Max pH</label>
+        <input type="number" id="th-sph-high" step="0.1" min="0" max="14"></div>
+    </div>
+    <button class="btn-save" onclick="saveSoilThresh()">💾 Save Soil Thresholds</button>
+  </div>
+
+  <!-- ══════════ WATER pH/EC SECTION (sensor type 3 / mineral) ══════════ -->
+  <div class="card row-1col hidden" id="card-water">
+    <div class="card-header">
+      <span class="card-icon">💦</span>
+      <span class="card-title">Water pH + EC Sensor (RS485)</span>
+      <span class="badge waiting" id="water-status" style="margin-left:auto;">–</span>
+    </div>
+    <div class="sensor-grid" style="grid-template-columns:repeat(3,1fr);">
+      <div class="sensor-tile"><div class="sensor-tile-label">🧪 Water pH</div>
+        <div class="sensor-tile-val" id="water-ph">–</div></div>
+      <div class="sensor-tile"><div class="sensor-tile-label">⚡ Water EC</div>
+        <div class="sensor-tile-val" id="water-ec">– <span style="font-size:0.7rem;color:var(--muted);">uS/cm</span></div></div>
+      <div class="sensor-tile"><div class="sensor-tile-label">🌡 Water Temp</div>
+        <div class="sensor-tile-val" id="water-temp">– <span style="font-size:0.7rem;color:var(--muted);">°C</span></div></div>
+    </div>
+    <div class="chart-container"><canvas id="waterChart"></canvas></div>
+    <div class="card-header" style="margin-top:8px;">
+      <span class="card-icon">⚠️</span><span class="card-title">Water Alert Thresholds</span>
+    </div>
+    <div class="thresh-grid" style="grid-template-columns:repeat(3,1fr);">
+      <div class="thresh-item"><label>🧪 Min pH</label>
+        <input type="number" id="th-wph-low" step="0.1" min="0" max="14"></div>
+      <div class="thresh-item"><label>🧪 Max pH</label>
+        <input type="number" id="th-wph-high" step="0.1" min="0" max="14"></div>
+      <div class="thresh-item"><label>⚡ Max EC (uS/cm)</label>
+        <input type="number" id="th-wec-high" step="50" min="0" max="20000"></div>
+    </div>
+    <button class="btn-save" onclick="saveWaterThresh()">💾 Save Water Thresholds</button>
   </div>
 
   <!-- Device Log Terminal -->
@@ -482,6 +567,127 @@ function updateChart(temp, humidity, co2) {
   sensorChart.update('none');
 }
 
+// ── RS485 charts ───────────────────────────────────────────────────────────
+function makeLineChart(canvasId, datasets) {
+  return new Chart(document.getElementById(canvasId), {
+    type: 'line',
+    data: { labels: [], datasets: datasets.map(d => ({
+      label: d.label, data: [], borderColor: d.color,
+      tension: 0.3, fill: false, borderWidth: 2, pointRadius: 3,
+      pointBackgroundColor: d.color })) },
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: true, labels: { color: '#3d3a36',
+        font: { family: "'Courier New', monospace", size: 12 },
+        usePointStyle: true, padding: 15 } } },
+      scales: { y: { ticks: { color: '#8b8680', font: { size: 11 } },
+                     grid: { color: 'rgba(232,228,220,0.3)' } },
+                x: { ticks: { color: '#8b8680', font: { size: 11 } },
+                     grid: { color: 'rgba(232,228,220,0.3)' } } } }
+  });
+}
+function pushChart(chart, values) {
+  chart.data.labels.push(new Date().toLocaleTimeString());
+  values.forEach((v, i) => chart.data.datasets[i].data.push(v));
+  if (chart.data.labels.length > 30) {
+    chart.data.labels.shift();
+    chart.data.datasets.forEach(ds => ds.data.shift());
+  }
+  chart.update('none');
+}
+
+let soilChart = null, waterChart = null, currentSensorType = 1;
+
+function setTile(id, val, digits, alert) {
+  const el = document.getElementById(id);
+  if (val == null) { el.firstChild.textContent = '– '; el.style.color = 'var(--muted)'; return; }
+  el.firstChild.textContent = Number(val).toFixed(digits) + ' ';
+  el.style.color = alert ? 'var(--red)' : '';
+}
+function setStatusBadge(id, ok) {
+  document.getElementById(id).outerHTML =
+    '<span class="badge ' + (ok ? 'online' : 'offline') + '" id="' + id +
+    '" style="margin-left:auto;">' + (ok ? '● Sensor OK' : '● No response') + '</span>';
+}
+
+function updateRs485Ui(d) {
+  if (currentSensorType === 2) {
+    setStatusBadge('soil-status', d.soil_ok);
+    setTile('soil-moist', d.soil_ok ? d.soil_moist : null, 1, d.alert_soil_moist);
+    setTile('soil-temp',  d.soil_ok ? d.soil_temp  : null, 1, false);
+    setTile('soil-ec',    d.soil_ok ? d.soil_ec    : null, 0, d.alert_soil_ec);
+    setTile('soil-ph',    d.soil_ok ? d.soil_ph    : null, 1, d.alert_soil_ph);
+    setTile('soil-n',     d.soil_ok ? d.soil_n     : null, 0, false);
+    setTile('soil-p',     d.soil_ok ? d.soil_p     : null, 0, false);
+    setTile('soil-k',     d.soil_ok ? d.soil_k     : null, 0, false);
+    if (d.soil_ok) {
+      if (!soilChart) soilChart = makeLineChart('soilChart', [
+        { label: 'Moisture (%)',  color: '#2d5d3f' },
+        { label: 'Temp (°C)',     color: '#d4a137' },
+        { label: 'EC (uS/cm ÷100)', color: '#c94c4c' },
+        { label: 'pH',            color: '#4a7fb5' }]);
+      pushChart(soilChart, [d.soil_moist, d.soil_temp, d.soil_ec / 100, d.soil_ph]);
+    }
+  } else if (currentSensorType === 3) {
+    setStatusBadge('water-status', d.water_ok);
+    setTile('water-ph',   d.water_ok ? d.water_ph   : null, 2, d.alert_water_ph);
+    setTile('water-ec',   d.water_ok ? d.water_ec   : null, 0, d.alert_water_ec);
+    setTile('water-temp', d.water_ok ? d.water_temp : null, 1, false);
+    if (d.water_ok) {
+      if (!waterChart) waterChart = makeLineChart('waterChart', [
+        { label: 'pH',            color: '#4a7fb5' },
+        { label: 'EC (uS/cm ÷100)', color: '#c94c4c' },
+        { label: 'Temp (°C)',     color: '#d4a137' }]);
+      pushChart(waterChart, [d.water_ph, d.water_ec / 100, d.water_temp]);
+    }
+  }
+}
+
+function applySensorTypeVisibility(t) {
+  currentSensorType = t;
+  document.getElementById('step4').classList.toggle('hidden', t !== 1);
+  document.getElementById('step-thresh').classList.toggle('hidden', t !== 1);
+  document.getElementById('card-soil').classList.toggle('hidden', t !== 2);
+  document.getElementById('card-water').classList.toggle('hidden', t !== 3);
+}
+
+// ── RS485 thresholds ──────────────────────────────────────────────────────
+function loadRs485Thresh() {
+  fetch('/get_rs485_thresh').then(r => r.json()).then(th => {
+    document.getElementById('th-wph-low').value     = th.wph_low;
+    document.getElementById('th-wph-high').value    = th.wph_high;
+    document.getElementById('th-wec-high').value    = th.wec_high;
+    document.getElementById('th-smoist-low').value  = th.smoist_low;
+    document.getElementById('th-smoist-high').value = th.smoist_high;
+    document.getElementById('th-sec-high').value    = th.sec_high;
+    document.getElementById('th-sph-low').value     = th.sph_low;
+    document.getElementById('th-sph-high').value    = th.sph_high;
+  }).catch(() => {});
+}
+function saveSoilThresh() {
+  const lo = parseFloat(document.getElementById('th-smoist-low').value);
+  const hi = parseFloat(document.getElementById('th-smoist-high').value);
+  const ec = parseFloat(document.getElementById('th-sec-high').value);
+  const pl = parseFloat(document.getElementById('th-sph-low').value);
+  const ph = parseFloat(document.getElementById('th-sph-high').value);
+  if ([lo, hi, ec, pl, ph].some(isNaN)) { showMsg('Enter valid values', 'error'); return; }
+  if (lo >= hi) { showMsg('Min moisture must be lower than max', 'error'); return; }
+  if (pl >= ph) { showMsg('Min pH must be lower than max', 'error'); return; }
+  fetch('/set_rs485_thresh?smoist_low=' + lo + '&smoist_high=' + hi +
+        '&sec_high=' + ec + '&sph_low=' + pl + '&sph_high=' + ph)
+    .then(() => showMsg('✓ Soil thresholds saved!', 'success'))
+    .catch(() => showMsg('Failed to save', 'error'));
+}
+function saveWaterThresh() {
+  const pl = parseFloat(document.getElementById('th-wph-low').value);
+  const ph = parseFloat(document.getElementById('th-wph-high').value);
+  const ec = parseFloat(document.getElementById('th-wec-high').value);
+  if ([pl, ph, ec].some(isNaN)) { showMsg('Enter valid values', 'error'); return; }
+  if (pl >= ph) { showMsg('Min pH must be lower than max', 'error'); return; }
+  fetch('/set_rs485_thresh?wph_low=' + pl + '&wph_high=' + ph + '&wec_high=' + ec)
+    .then(() => showMsg('✓ Water thresholds saved!', 'success'))
+    .catch(() => showMsg('Failed to save', 'error'));
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // DEVICE CONTROL FUNCTIONS (existing logic - do not modify)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -490,24 +696,33 @@ let selectedSecure = false;
 
 function loadThresholds() {
   fetch('/get_thresh').then(r => r.json()).then(th => {
-    document.getElementById('thresh-temp').value     = th.temp;
+    document.getElementById('thresh-temp').value        = th.temp;
     document.getElementById('thresh-temp-offset').value = th.temp_offset || 0;
-    document.getElementById('thresh-hum').value      = th.hum;
-    document.getElementById('thresh-hum-low').value  = th.hum_low;
-    document.getElementById('thresh-co2').value      = th.co2;
+    document.getElementById('thresh-hum-offset').value  = th.hum_offset !== undefined ? th.hum_offset : 0;
+    document.getElementById('thresh-hum').value         = th.hum;
+    document.getElementById('thresh-hum-low').value     = th.hum_low;
+    document.getElementById('thresh-co2-offset').value  = th.co2_offset !== undefined ? th.co2_offset : 0;
+    document.getElementById('thresh-co2').value         = th.co2;
+    document.getElementById('thresh-ldr-thresh').value  = th.ldr_thresh !== undefined ? th.ldr_thresh : 50;
   });
 }
 
 function saveThresholds() {
-  const temp   = parseFloat(document.getElementById('thresh-temp').value);
-  const offset = parseFloat(document.getElementById('thresh-temp-offset').value) || 0;
-  const hum    = parseFloat(document.getElementById('thresh-hum').value);
-  const humLow = parseFloat(document.getElementById('thresh-hum-low').value);
-  const co2    = parseFloat(document.getElementById('thresh-co2').value);
+  const temp      = parseFloat(document.getElementById('thresh-temp').value);
+  const offset    = parseFloat(document.getElementById('thresh-temp-offset').value) || 0;
+  const humOff    = parseFloat(document.getElementById('thresh-hum-offset').value) || 0;
+  const hum       = parseFloat(document.getElementById('thresh-hum').value);
+  const humLow    = parseFloat(document.getElementById('thresh-hum-low').value);
+  const co2Off    = parseFloat(document.getElementById('thresh-co2-offset').value) || 0;
+  const co2       = parseFloat(document.getElementById('thresh-co2').value);
+  const ldrThr    = parseInt(document.getElementById('thresh-ldr-thresh').value);
   if ([temp, hum, humLow, co2].some(isNaN)) { showMsg('Enter valid values for all thresholds', 'error'); return; }
   if (humLow >= hum) { showMsg('Min Humidity must be lower than Max Humidity', 'error'); return; }
+  const ldrVal = isNaN(ldrThr) ? 50 : Math.max(0, Math.min(4095, ldrThr));
   showMsg('Saving thresholds...', 'info');
-  fetch('/set_thresh?temp=' + temp + '&hum=' + hum + '&hum_low=' + humLow + '&co2=' + co2 + '&temp_offset=' + offset)
+  fetch('/set_thresh?temp=' + temp + '&hum=' + hum + '&hum_low=' + humLow + '&co2=' + co2 +
+        '&temp_offset=' + offset + '&hum_offset=' + humOff + '&co2_offset=' + co2Off +
+        '&ldr_thresh=' + ldrVal)
     .then(r => r.text())
     .then(() => showMsg('✓ Thresholds saved!', 'success'))
     .catch(() => showMsg('Failed to save', 'error'));
@@ -682,6 +897,10 @@ function pollSensors() {
     if (d.temp != null || d.hum != null || d.co2 != null) {
       updateChart(d.temp, d.hum, d.co2);
     }
+
+    if (d.sensor_type) currentSensorType = d.sensor_type;
+    updateRs485Ui(d);
+
   }).catch(err => { console.error('pollSensors error', err); });
 }
 
@@ -717,6 +936,7 @@ function loadSensorType() {
   fetch('/get_sensor_type').then(r => r.json()).then(d => {
     const label = SENSOR_LABELS[d.sensor_type] || '–';
     document.getElementById('sensor-type-badge').textContent = label;
+    applySensorTypeVisibility(d.sensor_type);
   }).catch(() => {});
 }
 
@@ -732,6 +952,9 @@ function setSensorType(type) {
       document.getElementById('sensor-type-selected').textContent =
         '✓ Set to ' + (SENSOR_LABELS[type] || type);
       document.getElementById('sensor-type-selected').style.color = 'var(--green)';
+
+      applySensorTypeVisibility(type);
+
       showMsg('✓ Sensor type saved', 'success');
     }
   })
@@ -743,6 +966,7 @@ window.addEventListener('load', function() {
   updateStatus();
   loadSensorType();
   loadThresholds();
+  loadRs485Thresh();
   pollSensors();
   pollLogs();
   
@@ -1124,7 +1348,10 @@ function stopScan() {
 // ── Global threshold variables ────────────────────────────────────────────────
 float threshTemp    = 30.0f;
 float threshTempLow =  5.0f;
-float tempOffset = TEMP_OFFSET_DEFAULT;
+float tempOffset    = TEMP_OFFSET_DEFAULT;
+float humOffset     = 0.0f;
+float co2Offset     = 0.0f;
+int   ldrThresh     = LDR_THRESHOLD;
 float threshHum     = 80.0f;
 float threshHumLow  = 20.0f;
 float threshCO2     = 1000.0f;
@@ -1135,6 +1362,46 @@ extern bool  alertTemp;
 extern bool  alertHum;
 
 static const char* THRESH_NVS_NS = "thresholds";
+
+// ── RS485 sensor thresholds (referenced by rs485_sensor.cpp) ─────────────────
+float threshWaterPhLow    = 5.5f;
+float threshWaterPhHigh   = 7.5f;
+float threshWaterEcHigh   = 3000.0f;
+float threshSoilMoistLow  = 20.0f;
+float threshSoilMoistHigh = 80.0f;
+float threshSoilEcHigh    = 2000.0f;
+float threshSoilPhLow     = 5.5f;
+float threshSoilPhHigh    = 7.5f;
+
+static const char* RS485_THRESH_NVS_NS = "rs485thresh";
+
+static void loadRs485ThreshFromNVS() {
+    Preferences prefs;
+    prefs.begin(RS485_THRESH_NVS_NS, true);
+    threshWaterPhLow    = prefs.getFloat("wph_low",     5.5f);
+    threshWaterPhHigh   = prefs.getFloat("wph_high",    7.5f);
+    threshWaterEcHigh   = prefs.getFloat("wec_high", 3000.0f);
+    threshSoilMoistLow  = prefs.getFloat("smoist_low",  20.0f);
+    threshSoilMoistHigh = prefs.getFloat("smoist_high", 80.0f);
+    threshSoilEcHigh    = prefs.getFloat("sec_high", 2000.0f);
+    threshSoilPhLow     = prefs.getFloat("sph_low",     5.5f);
+    threshSoilPhHigh    = prefs.getFloat("sph_high",    7.5f);
+    prefs.end();
+}
+
+static void saveRs485ThreshToNVS() {
+    Preferences prefs;
+    prefs.begin(RS485_THRESH_NVS_NS, false);
+    prefs.putFloat("wph_low",     threshWaterPhLow);
+    prefs.putFloat("wph_high",    threshWaterPhHigh);
+    prefs.putFloat("wec_high",    threshWaterEcHigh);
+    prefs.putFloat("smoist_low",  threshSoilMoistLow);
+    prefs.putFloat("smoist_high", threshSoilMoistHigh);
+    prefs.putFloat("sec_high",    threshSoilEcHigh);
+    prefs.putFloat("sph_low",     threshSoilPhLow);
+    prefs.putFloat("sph_high",    threshSoilPhHigh);
+    prefs.end();
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -1178,6 +1445,9 @@ static void loadThresholdsFromNVS() {
     threshTemp    = prefs.getFloat("temp",      30.0f);
     threshTempLow = prefs.getFloat("temp_low",   5.0f);
     tempOffset    = prefs.getFloat("temp_offset", TEMP_OFFSET_DEFAULT);
+    humOffset     = prefs.getFloat("hum_offset",  0.0f);
+    co2Offset     = prefs.getFloat("co2_offset",  0.0f);
+    ldrThresh     = prefs.getInt("ldr_thresh",    LDR_THRESHOLD);
     threshHum     = prefs.getFloat("hum",       80.0f);
     threshHumLow  = prefs.getFloat("hum_low",   20.0f);
     threshCO2     = prefs.getFloat("eco2",    1000.0f);
@@ -1195,6 +1465,9 @@ static void saveThresholdsToNVS(float temp, float tempLow, float hum, float humL
     prefs.putFloat("hum_low",     humLow);
     prefs.putFloat("co2",         co2);
     prefs.putFloat("temp_offset", offset);
+    prefs.putFloat("hum_offset",  humOffset);
+    prefs.putFloat("co2_offset",  co2Offset);
+    prefs.putInt("ldr_thresh",    ldrThresh);
     prefs.end();
 }
 
@@ -1342,7 +1615,7 @@ static void handleSetToken() {
 static void handleSensors() {
     addCorsHeaders();
 
-    char buf[512];
+    char buf[1024];
     char tempBuf[32];
     char humBuf[32];
     char co2Buf[16];
@@ -1367,18 +1640,31 @@ static void handleSensors() {
         "\"alert_co2\":%s,\"alert_co2_num\":%d,"
         "\"scd40_ok\":%s,"
         "\"light_on\":%s,\"light_on_num\":%d,"
-        "\"ldr_ok\":%s"
+        "\"ldr_ok\":%s,"
+        "\"sensor_type\":%u,"
+        "\"rs485_status\":\"%s\","
+        "\"water_ok\":%s,\"water_ph\":%.2f,\"water_ec\":%.0f,\"water_temp\":%.1f,"
+        "\"alert_water_ph\":%s,\"alert_water_ec\":%s,"
+        "\"soil_ok\":%s,\"soil_moist\":%.1f,\"soil_temp\":%.1f,\"soil_ec\":%.0f,"
+        "\"soil_ph\":%.1f,\"soil_n\":%u,\"soil_p\":%u,\"soil_k\":%u,"
+        "\"alert_soil_moist\":%s,\"alert_soil_ec\":%s,\"alert_soil_ph\":%s"
         "}",
-        tempBuf,
-        humBuf,
-        co2Buf,
-        co2Label(sensorCO2),
+        tempBuf, humBuf, co2Buf, co2Label(sensorCO2),
         alertTemp  ? "true" : "false", alertTemp  ? 1 : 0,
         alertHum   ? "true" : "false", alertHum   ? 1 : 0,
         alertCO2   ? "true" : "false", alertCO2   ? 1 : 0,
         sensorOK   ? "true" : "false",
         ldrLightOn ? "true" : "false", ldrLightOnNum(),
-        ldrOK      ? "true" : "false"
+        ldrOK      ? "true" : "false",
+        rs485ActiveType(),
+        rs485StatusLabel(),
+        waterOK ? "true" : "false", waterPh, waterEc, waterTemp,
+        alertWaterPh ? "true" : "false", alertWaterEc ? "true" : "false",
+        soilOK ? "true" : "false", soilMoist, soilTemp, soilEc,
+        soilPh, soilN, soilP, soilK,
+        alertSoilMoist ? "true" : "false",
+        alertSoilEc    ? "true" : "false",
+        alertSoilPh    ? "true" : "false"
     );
     server.send(200, "application/json", buf);
 }
@@ -1386,12 +1672,15 @@ static void handleSensors() {
 static void handleSetThresh() {
     bool fromApi = server.hasArg("from_api") && server.arg("from_api") == "1";
 
-    if (server.hasArg("temp"))     threshTemp    = server.arg("temp").toFloat();
-    if (server.hasArg("temp_low")) threshTempLow = server.arg("temp_low").toFloat();
-    if (server.hasArg("temp_offset")) tempOffset = server.arg("temp_offset").toFloat();
-    if (server.hasArg("hum"))      threshHum     = server.arg("hum").toFloat();
-    if (server.hasArg("hum_low"))  threshHumLow  = server.arg("hum_low").toFloat();
-    if (server.hasArg("co2"))      threshCO2     = server.arg("co2").toFloat();  // lowercase co2
+    if (server.hasArg("temp"))        threshTemp    = server.arg("temp").toFloat();
+    if (server.hasArg("temp_low"))    threshTempLow = server.arg("temp_low").toFloat();
+    if (server.hasArg("temp_offset")) tempOffset    = server.arg("temp_offset").toFloat();
+    if (server.hasArg("hum_offset"))  humOffset     = server.arg("hum_offset").toFloat();
+    if (server.hasArg("co2_offset"))  co2Offset     = server.arg("co2_offset").toFloat();
+    if (server.hasArg("ldr_thresh"))  ldrThresh     = (int)server.arg("ldr_thresh").toFloat();
+    if (server.hasArg("hum"))         threshHum     = server.arg("hum").toFloat();
+    if (server.hasArg("hum_low"))     threshHumLow  = server.arg("hum_low").toFloat();
+    if (server.hasArg("co2"))         threshCO2     = server.arg("co2").toFloat();
 
     saveThresholdsToNVS(threshTemp, threshTempLow, threshHum, threshHumLow, threshCO2, tempOffset);
 
@@ -1435,11 +1724,49 @@ static void handleSetThresh() {
 }
 
 static void handleGetThresh() {
-    char buf[300];
+    char buf[400];
     snprintf(buf, sizeof(buf),
-             "{\"temp\":%.2f,\"temp_low\":%.2f,\"hum\":%.2f,\"hum_low\":%.2f,\"co2\":%.0f,\"temp_offset\":%.2f}",
-             threshTemp, threshTempLow, threshHum, threshHumLow, threshCO2, tempOffset);
+             "{\"temp\":%.2f,\"temp_low\":%.2f,\"hum\":%.2f,\"hum_low\":%.2f,\"co2\":%.0f,"
+             "\"temp_offset\":%.2f,\"hum_offset\":%.2f,\"co2_offset\":%.0f,\"ldr_thresh\":%d}",
+             threshTemp, threshTempLow, threshHum, threshHumLow, threshCO2,
+             tempOffset, humOffset, co2Offset, ldrThresh);
     server.send(200, "application/json", buf);
+}
+
+static void handleGetRs485Thresh() {
+    addCorsHeaders();
+    char buf[320];
+    snprintf(buf, sizeof(buf),
+        "{\"wph_low\":%.2f,\"wph_high\":%.2f,\"wec_high\":%.0f,"
+        "\"smoist_low\":%.1f,\"smoist_high\":%.1f,\"sec_high\":%.0f,"
+        "\"sph_low\":%.2f,\"sph_high\":%.2f}",
+        threshWaterPhLow, threshWaterPhHigh, threshWaterEcHigh,
+        threshSoilMoistLow, threshSoilMoistHigh, threshSoilEcHigh,
+        threshSoilPhLow, threshSoilPhHigh);
+    server.send(200, "application/json", buf);
+}
+
+static void handleSetRs485Thresh() {
+    if (server.hasArg("wph_low"))     threshWaterPhLow    = server.arg("wph_low").toFloat();
+    if (server.hasArg("wph_high"))    threshWaterPhHigh   = server.arg("wph_high").toFloat();
+    if (server.hasArg("wec_high"))    threshWaterEcHigh   = server.arg("wec_high").toFloat();
+    if (server.hasArg("smoist_low"))  threshSoilMoistLow  = server.arg("smoist_low").toFloat();
+    if (server.hasArg("smoist_high")) threshSoilMoistHigh = server.arg("smoist_high").toFloat();
+    if (server.hasArg("sec_high"))    threshSoilEcHigh    = server.arg("sec_high").toFloat();
+    if (server.hasArg("sph_low"))     threshSoilPhLow     = server.arg("sph_low").toFloat();
+    if (server.hasArg("sph_high"))    threshSoilPhHigh    = server.arg("sph_high").toFloat();
+
+    saveRs485ThreshToNVS();
+
+    // Recompute alert flags against current readings immediately
+    alertWaterPh   = waterOK && ((waterPh < threshWaterPhLow) || (waterPh > threshWaterPhHigh));
+    alertWaterEc   = waterOK && (waterEc > threshWaterEcHigh);
+    alertSoilMoist = soilOK  && ((soilMoist < threshSoilMoistLow) || (soilMoist > threshSoilMoistHigh));
+    alertSoilEc    = soilOK  && (soilEc > threshSoilEcHigh);
+    alertSoilPh    = soilOK  && ((soilPh < threshSoilPhLow) || (soilPh > threshSoilPhHigh));
+
+    Serial.println("[Thresh] RS485 thresholds saved");
+    server.send(200, "text/plain", "OK");
 }
 
 static void handleFactoryReset() {
@@ -1515,7 +1842,7 @@ static void handleBrokerStatus() {
 
 // Sensor type for UI display purposes (1=environment, 2=soil, 3=mineral)
 static void handleGetSensorType() {
-    uint8_t t = localMqttGetSensorType();
+    uint8_t t = rs485ActiveType();
     char buf[80];
     const char* labels[] = { "", "environment", "soil", "mineral" };
     snprintf(buf, sizeof(buf),
@@ -1535,6 +1862,7 @@ static void handleSetSensorType() {
         return;
     }
     localMqttSetSensorType(t);
+    rs485ApplySensorType(t);   // live-switch the RS485 driver & baud rate
     server.send(200, "application/json", "{\"status\":\"ok\"}");
 }
 
@@ -1568,9 +1896,12 @@ void webServerInit() {
     server.on("/broker_status", HTTP_GET,  handleBrokerStatus);
     server.on("/get_sensor_type", HTTP_GET,  handleGetSensorType);
     server.on("/set_sensor_type", HTTP_POST, handleSetSensorType);
+    server.on("/get_rs485_thresh", HTTP_GET,  handleGetRs485Thresh);
+    server.on("/set_rs485_thresh",            handleSetRs485Thresh);
     server.on("/logs",          HTTP_GET,  handleLogs);
 
     loadThresholdsFromNVS();
+    loadRs485ThreshFromNVS();
     server.begin();
     Serial.println("[Web] Server started");
 }

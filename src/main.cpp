@@ -11,6 +11,7 @@
 #include "mqtt.h"
 #include "local_mqtt.h"
 #include "factory_reset.h"
+#include "rs485_sensor.h"
 #include <esp_wifi.h>
 
 //* ESP32C3 Smart Monitor — MAIN
@@ -105,23 +106,25 @@ bool registerDevice() {
 }
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
-void setup() {  
+void setup() {
     Serial.begin(115200);
     delay(1500);
     Serial.println("\n====== BOSS FARM Smart Monitor ======");
 
+    // ── NeoPixel + boot-stage indicator ──────────────────────────────────────
+    // The LED doubles as a boot-progress beacon for blind/remote debugging:
+    //   WHITE  — firmware alive, radio not up yet
+    //   CYAN   — AP up, initialising sensors (a sensor stall can't hide the AP)
+    //   (loop() then takes over: BLUE=not commissioned, RED/AMBER/GREEN, etc.)
     ring.begin();
     ring.setBrightness(BRIGHTNESS);
-    ring.clear();
+    ring.fill(ring.Color(30, 30, 30));   // white — booting
     ring.show();
-    Serial.println("✓ NeoPixel on GPIO3");
+    Serial.printf("✓ NeoPixel on GPIO%d\n", NEOPIXEL_PIN);
 
-    factoryResetInit();
-
-    scd40Init();
-    ldrInit();
-
-    // ── Radio init: AP first, always ─────────────────────────────────────────
+    // ── Radio init FIRST, always ─────────────────────────────────────────────
+    // Bring the AP up before any sensor/I2C init so a mis-wired bus can never
+    // prevent the hotspot from appearing (see scd40Init / I2C scan).
     WiFi.persistent(false);
     WiFi.disconnect(false);
     delay(100);
@@ -129,6 +132,15 @@ void setup() {
     delay(300);
     startAP();          // AP up before any STA attempt
     delay(500);
+
+    ring.fill(ring.Color(0, 30, 30));    // cyan — AP up, sensors next
+    ring.show();
+
+    // ── Sensors (after AP, so a stall is non-fatal to provisioning) ──────────
+    factoryResetInit();
+    scd40Init();
+    ldrInit();
+    rs485SensorInit();   // loads sensor type from NVS, starts UART only for type 2/3
 
     wifiConfigBegin(HOME_SSID, HOME_PASSWORD);
 
@@ -183,6 +195,7 @@ void loop() {
 
     // Sensor reads every 2s, staggered to avoid doing them both at the same time.
     scd40Read();
+    rs485SensorRead();   // self-throttled to 5s; no-op for environment type
 
     static uint32_t lastLdrCheck = 0;
     if (now - lastLdrCheck >= SENSOR_INTERVAL) {
