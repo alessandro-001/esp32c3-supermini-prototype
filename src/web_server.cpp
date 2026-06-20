@@ -210,7 +210,7 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
         <span class="row-label">Signal</span>
         <span class="val" id="device-rssi">–</span>
       </div>
-      <div id="sensor-type-commissioned" class="row hidden">
+      <div class="row">
         <span class="row-label">Sensor Type</span>
         <span class="val" id="sensor-type-badge">–</span>
       </div>
@@ -821,13 +821,7 @@ function updateStatus() {
     }
 
     loadSensorType();
-    if (info.commissioned) {
-      document.getElementById('sensor-type-commissioned').classList.remove('hidden');
-      document.getElementById('sensor-type-selector').classList.add('hidden');
-    } else {
-      document.getElementById('sensor-type-commissioned').classList.add('hidden');
-      document.getElementById('sensor-type-selector').classList.remove('hidden');
-    }
+    document.getElementById('sensor-type-selector').classList.toggle('hidden', !!info.commissioned);
   }).catch(() => {});
 }
 
@@ -952,6 +946,7 @@ function setSensorType(type) {
       document.getElementById('sensor-type-selected').textContent =
         '✓ Set to ' + (SENSOR_LABELS[type] || type);
       document.getElementById('sensor-type-selected').style.color = 'var(--green)';
+      document.getElementById('sensor-type-badge').textContent = SENSOR_LABELS[type] || type;
 
       applySensorTypeVisibility(type);
 

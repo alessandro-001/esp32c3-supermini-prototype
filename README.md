@@ -337,13 +337,15 @@ Topic: `sensors/{DEVICE_ID}/attributes`
 
 ### Type 2: Soil
 - **Topic:** `sensors/SOIL_{MAC}/soil`
-- **Fields:** EC (electrical conductivity), RH (relative humidity)
+- **Sensor:** Halisense Soil 7-in-1 (RS485 Modbus RTU, 4800 baud)
+- **Fields:** moisture (%), temperature (°C), EC (uS/cm), pH, N, P, K (mg/kg)
 
 ### Type 3: Mineral
 - **Topic:** `sensors/MIN_{MAC}/mineral`
-- **Fields:** EC, N, P, K (nitrogen, phosphorus, potassium)
+- **Sensor:** CWT-OYS-PHEC Water pH/EC (RS485 Modbus RTU, 9600 baud)
+- **Fields:** pH, EC (uS/cm), temperature (°C)
 
-**Current implementation:** Types 2 & 3 have placeholder payloads.
+**Current implementation:** Types 2 & 3 read live values over RS485 (see `src/sensors/rs485_sensor.cpp`).
 
 ---
 
@@ -375,6 +377,19 @@ Alerts trigger on **strictly greater than** — equal does not trigger. Persiste
 **First boot:** AP enabled, no WiFi, no MQTT. Connect to AP → open `192.168.4.1` → enter WiFi credentials → device commissions and starts publishing.
 
 **After commissioning:** AP disables, mDNS starts, MQTT connects. AP re-enables if WiFi drops for >30s.
+
+---
+
+## Registering a Device (step by step)
+
+1. **Flash the firmware** (see [Build & Deployment](#build--deployment), or use the standalone flasher in `flash_tool/`).
+2. **Power on the board.** The NeoPixel ring goes white (booting) → cyan (AP up, sensors initializing) → blue (AP up, not yet commissioned).
+3. **Connect to the device's WiFi hotspot** — SSID `ESP32C3_Hotspot_XXXX` (last 4 MAC chars), password from `include/secrets.h`.
+4. **Open `http://192.168.4.1`** in a browser (most phones auto-prompt via the captive portal redirect).
+5. In the **Device Information** card, click **Environment**, **Soil**, or **Mineral** to match the sensor wired to this unit. The "Sensor Type" row updates immediately and the relevant live-data card (and chart) appears further down the page — confirm it's correct before continuing, since switching later requires reopening this same page.
+6. In the **WiFi Connection** card, click **Scan Networks**, select the home/site network, enter the password, and click **Connect**.
+7. On success, a confirmation screen shows the device's IP and `.local` hostname. The AP hotspot turns off and the device joins that network — the LED turns red (no WiFi yet), then green once MQTT connects.
+8. The device is now commissioned. Reach its UI going forward at `http://<ip>` or `http://<hostname>.local` (both shown in step 7) — the AP will only reappear if WiFi is lost for >30s or after a factory reset.
 
 ---
 
@@ -436,7 +451,7 @@ Covers: sensor validation, threshold logic, WiFi config validation, MQTT payload
 
 ## Known Limitations & Future Work
 
-- **Soil & Mineral types:** Placeholder payloads only — implement actual sensor drivers
+- **Soil & Mineral types:** Live via RS485 (Halisense Soil 7-in-1 / CWT-OYS-PHEC Water pH/EC)
 - **Provisioning:** Disabled by default, not actively maintained
 - **Buffer sizes:** MQTT payload 1024 bytes, log 40 lines — increase if needed
 - **I2C:** Single bus, single device (SCD40 only)
