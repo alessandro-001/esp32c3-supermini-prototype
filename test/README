@@ -11,6 +11,8 @@ test/
 └── native/
     ├── test_threshold_logic/       # Alert flag calculations (temp, hum, CO2)
     ├── test_rs485_thresholds/      # Alert flag calculations (soil & water RS485 sensors)
+    ├── test_scd40/                 # CRC-8, CO2 label mapping, raw->physical conversion, offset clamp
+    ├── test_ldr/                   # Sample filtering (strapping spikes) and light threshold
     ├── test_wifi_config/           # WiFi credential validation logic
     └── test_provisioning/          # ThingsBoard provisioning response parsing
 ```
@@ -33,6 +35,21 @@ Validates the alert flag calculations in `sensors/rs485_sensor.cpp` for the Soil
 - Soil moisture and pH, and water pH, alert on either side of their range
 - Soil EC and water EC alert only on the high side
 - Alerts fire strictly beyond the threshold — equal does not trigger
+
+### `test_scd40`
+Validates the pure logic in `sensors/scd40.cpp`.
+
+- CRC-8 is deterministic and detects single-byte corruption
+- `co2Label()` boundaries across all six bands
+- Raw word -> physical value conversion (temperature, humidity) at min/max
+- CO2 offset clamps to 0 instead of going negative
+
+### `test_ldr`
+Validates the pure logic in `sensors/ldr.cpp` `ldrRead()`.
+
+- Picks the minimum of valid samples, ignoring strapping spikes (>= 4090)
+- All-spike sample sets yield zero valid readings (previous value held)
+- Light on/off threshold comparison, including the exact-boundary case
 
 ### `test_wifi_config`
 Validates the credential validation logic in `wifiConfigSave()`.
