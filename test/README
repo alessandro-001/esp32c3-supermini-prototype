@@ -1,6 +1,6 @@
-# Tests — ESP32C3 Smart Monitor
+# Tests — BOSS FARM Smart Monitor
 
-Native unit tests for the ESP32C3 Smart Monitor firmware, running on the host machine via PlatformIO's native environment.
+Native unit tests for the firmware, running on the host machine via PlatformIO's native environment.
 
 ---
 
@@ -9,39 +9,30 @@ Native unit tests for the ESP32C3 Smart Monitor firmware, running on the host ma
 ```
 test/
 └── native/
-    ├── test_sensor_validation/     # SHTC3 and ENS160 reading sanity checks
-    ├── test_threshold_logic/       # Alert flag calculations (temp, hum, TVOC, eCO2)
-    ├── test_mqtt_payload/          # Telemetry and attribute JSON payload builders
+    ├── test_threshold_logic/       # Alert flag calculations (temp, hum, CO2)
+    ├── test_rs485_thresholds/      # Alert flag calculations (soil & water RS485 sensors)
     ├── test_wifi_config/           # WiFi credential validation logic
-    ├── test_provisioning/          # ThingsBoard provisioning response parsing
-    └── test_ens160_aqi/            # ENS160 AQI label mapping
+    └── test_provisioning/          # ThingsBoard provisioning response parsing
 ```
 
 ---
 
 ## What is tested
 
-### `test_sensor_validation`
-Validates the sanity check logic applied to raw sensor readings before they are accepted.
-
-- SHTC3: temperature must be between -40°C and 120°C, humidity between 0% and 100%
-- ENS160: AQI must be 1–5, eCO2 must be 400–65000 ppm
-- Covers valid readings, boundary values, and out-of-range rejection
-
 ### `test_threshold_logic`
-Validates the alert flag calculations triggered when sensor values exceed user-defined thresholds.
+Validates the alert flag calculations in `web_server.cpp` (`alertTemp`, `alertHum`, `alertCO2`).
 
-- Alerts fire when value is **strictly greater than** the threshold (equal does not trigger)
-- Covers temperature, humidity, TVOC, and eCO2
-- Includes exact-boundary edge cases
+- Temperature and humidity alert on **either** side of their range (high or low threshold)
+- CO2 alerts only on the high side (no low threshold)
+- Alerts fire **strictly beyond** the threshold — equal does not trigger
+- Covers boundary values for every case
 
-### `test_mqtt_payload`
-Validates the JSON payload strings published to ThingsBoard via MQTT.
+### `test_rs485_thresholds`
+Validates the alert flag calculations in `sensors/rs485_sensor.cpp` for the Soil 7-in-1 and Water pH/EC sensors.
 
-- Telemetry payload: temperature, humidity, alert flags, AQI, TVOC, eCO2, air quality status
-- Attribute payload: MAC, IP, RSSI, firmware version, all four thresholds
-- Checks that payloads fit within their allocated buffers (256 and 384 bytes respectively)
-- Checks correct formatting of boolean alert flags (`true`/`false`)
+- Soil moisture and pH, and water pH, alert on either side of their range
+- Soil EC and water EC alert only on the high side
+- Alerts fire strictly beyond the threshold — equal does not trigger
 
 ### `test_wifi_config`
 Validates the credential validation logic in `wifiConfigSave()`.
@@ -57,12 +48,6 @@ Validates the JSON response parser for ThingsBoard device provisioning.
 - Accepts valid `SUCCESS` responses and extracts the token correctly
 - Rejects `FAILURE` status, missing status field, missing token, empty token
 - Rejects malformed/invalid JSON
-
-### `test_ens160_aqi`
-Validates the AQI integer-to-label mapping function.
-
-- Values 1–5 map to Excellent, Good, Moderate, Poor, Unhealthy
-- Values outside 1–5 (including 0 and 255) return `"Unknown"`
 
 ---
 
@@ -91,4 +76,4 @@ Tests run entirely on the host machine — no ESP32, no sensors, no WiFi require
 
 The only external dependency is **ArduinoJson** (used in `test_provisioning`), which is header-only and works natively.
 
-If logic in a source file changes, the corresponding test will catch the drift — update both together.
+If logic in a source file changes, the corresponding test will catch the drift — update both together. If a sensor or module is removed from `src/`, delete its test too rather than leaving it testing dead code.
