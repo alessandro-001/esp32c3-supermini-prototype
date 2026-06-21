@@ -23,5 +23,6 @@ jobs:
         with:
           python-version: "3.x"
       - run: pip install platformio
+      - run: cp include/secrets.h.example include/secrets.h
       - run: pio run -e esp32c6
 
