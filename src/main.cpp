@@ -14,7 +14,7 @@
 #include "rs485_sensor.h"
 #include <esp_wifi.h>
 
-//* ESP32C3 Smart Monitor — MAIN
+//* ESP32C6 Smart Monitor — MAIN
 
 // ── NeoPixel ──────────────────────────────────────────────────────────────────
 Adafruit_NeoPixel ring(NUM_LEDS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);

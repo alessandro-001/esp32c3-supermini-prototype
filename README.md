@@ -292,7 +292,7 @@ Topic: `sensors/{DEVICE_ID}/attributes`
 
 ```cpp
 // Access Point
-#define AP_SSID             "ESP32C3_Hotspot"
+#define AP_SSID             "ESP32C6_Hotspot"
 
 // Hardware Pins — ESP32-C6
 #define NEOPIXEL_PIN        20
@@ -384,7 +384,7 @@ Alerts trigger on **strictly greater than** — equal does not trigger. Persiste
 
 1. **Flash the firmware** (see [Build & Deployment](#build--deployment), or use the standalone flasher in `flash_tool/`).
 2. **Power on the board.** The NeoPixel ring goes white (booting) → cyan (AP up, sensors initializing) → blue (AP up, not yet commissioned).
-3. **Connect to the device's WiFi hotspot** — SSID `ESP32C3_Hotspot_XXXX` (last 4 MAC chars), password from `include/secrets.h`.
+3. **Connect to the device's WiFi hotspot** — SSID `ESP32C6_Hotspot_XXXX` (last 4 MAC chars), password from `include/secrets.h`.
 4. **Open `http://192.168.4.1`** in a browser (most phones auto-prompt via the captive portal redirect).
 5. In the **Device Information** card, click **Environment**, **Soil**, or **Mineral** to match the sensor wired to this unit. The "Sensor Type" row updates immediately and the relevant live-data card (and chart) appears further down the page — confirm it's correct before continuing, since switching later requires reopening this same page.
 6. In the **WiFi Connection** card, click **Scan Networks**, select the home/site network, enter the password, and click **Connect**.

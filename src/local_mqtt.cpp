@@ -12,7 +12,7 @@
 #include <ESPmDNS.h>
 
 // Firmware MQTT target:
-// ESP32-C3 -> Raspberry Pi MQTT broker -> mqtt_to_influx.py -> InfluxDB
+// ESP32-C6 -> Raspberry Pi MQTT broker -> mqtt_to_influx.py -> InfluxDB
 //
 // Docker bridge expects topics:
 // sensors/+/telemetry
@@ -255,7 +255,7 @@ static void localMqttConnect() {
     return;
   }
 
-  String clientId = "ESP32C3-" + macNoColon();
+  String clientId = "ESP32C6-" + macNoColon();
 
   IPAddress brokerIp;
   if (!resolveBrokerAddress(brokerIp)) {

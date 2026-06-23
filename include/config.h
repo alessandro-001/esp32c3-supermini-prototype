@@ -3,9 +3,9 @@
 #include "secrets.h"
 
 //! ── Access Point ─────────────────────────────────────────────────────────────
-#define AP_SSID             "ESP32C3_Hotspot"
+#define AP_SSID             "ESP32C6_Hotspot"
 
-//! ── Hardware Pins ESP32-C3 ───────────────────────────────────────────────────
+//! ── Hardware Pins ESP32-C6 ───────────────────────────────────────────────────
 #define NEOPIXEL_PIN        20 // 3 (old)
 #define NUM_LEDS            12
 #define BRIGHTNESS          10
