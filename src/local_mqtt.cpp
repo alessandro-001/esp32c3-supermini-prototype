@@ -529,7 +529,6 @@ void localMqttPublish() {
           "}"
         "}",
         deviceId.c_str(),
-        timestamp.c_str(),
         gSensorType,
         sensorTypeLabel(gSensorType),
         FIRMWARE_VERSION,
@@ -595,7 +594,6 @@ void localMqttPublish() {
           "}"
         "}",
         deviceId.c_str(),
-        timestamp.c_str(),
         gSensorType,
         sensorTypeLabel(gSensorType),
         FIRMWARE_VERSION,
