@@ -465,7 +465,9 @@ void localMqttPublish() {
       );
     }
   } else if (gSensorType == 2) {
-    // Soil sensor.
+    // Soil sensor (Halisense or XS-MEC20, see rs485SoilModel()). ph/n/p/k
+    // are populated for Halisense, always 0 for XS-MEC20 — kept in the
+    // payload either way so the Pi-side schema stays stable.
     if (timestamp.length() > 0) {
       snprintf(
         payload,

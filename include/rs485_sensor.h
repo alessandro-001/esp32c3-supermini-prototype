@@ -11,7 +11,9 @@
 //
 // Driver selection is bound to the existing device sensor type:
 //   1 = Environment (SCD40/LDR only — RS485 idle, UART not initialised)
-//   2 = Soil        -> Halisense Soil 7-in-1   (4800,N,8,1, addr 1, regs 0x0000..0x0006)
+//   2 = Soil        -> two selectable models (soil_model NVS key, default 0):
+//                        0 = Halisense Soil 7-in-1 (4800,N,8,1, regs 0x0000..0x0006)
+//                        1 = XS-MEC20 Soil VWC/EC  (9600,N,8,1, regs 0x0000..0x0002)
 //   3 = Mineral     -> CWT-OYS-PHEC Water pH/EC (9600,N,8,1, addr 1, regs 0x0000..0x0002)
 //
 // Only ONE sensor is ever connected at a time (single-drop bus).
@@ -24,26 +26,28 @@ extern bool  waterOK;            // last poll cycle succeeded
 extern bool  alertWaterPh;       // outside [threshWaterPhLow, threshWaterPhHigh]
 extern bool  alertWaterEc;       // above threshWaterEcHigh
 
-//! ── Soil 7-in-1 shared state (sensor type 2) ────────────────────────────────
-extern float    soilMoist;       // %RH           (raw / 10)
-extern float    soilTemp;        // degC          (raw / 10, signed)
+//! ── Soil shared state (sensor type 2, Halisense or XS-MEC20 per soil_model) ─
+extern float    soilMoist;       // Halisense: %RH (raw/10) — XS-MEC20: VWC % (raw/100)
+extern float    soilTemp;        // degC          (signed; /10 Halisense, /100 XS-MEC20)
 extern float    soilEc;          // uS/cm         (raw)
-extern float    soilPh;          // pH            (raw / 10)
-extern uint16_t soilN;           // mg/kg         (raw)
-extern uint16_t soilP;           // mg/kg         (raw)
-extern uint16_t soilK;           // mg/kg         (raw)
+extern float    soilPh;          // pH (raw/10) on Halisense — always 0.0 on XS-MEC20 (no pH)
+extern uint16_t soilN;           // mg/kg (raw) on Halisense — always 0 on XS-MEC20 (no NPK)
+extern uint16_t soilP;           // mg/kg (raw) on Halisense — always 0 on XS-MEC20 (no NPK)
+extern uint16_t soilK;           // mg/kg (raw) on Halisense — always 0 on XS-MEC20 (no NPK)
 extern bool     soilOK;          // last poll cycle succeeded
 extern bool     alertSoilMoist;  // outside [threshSoilMoistLow, threshSoilMoistHigh]
 extern bool     alertSoilEc;     // above threshSoilEcHigh
-extern bool     alertSoilPh;     // outside [threshSoilPhLow, threshSoilPhHigh]
+extern bool     alertSoilPh;     // outside [threshSoilPhLow, threshSoilPhHigh] on Halisense — always false on XS-MEC20
 
 //! ── Diagnostics ──────────────────────────────────────────────────────────────
 extern uint32_t rs485PollCount;  // total poll attempts since boot
 extern uint32_t rs485FailCount;  // total failed polls since boot (timeout/CRC/invalid)
 
 //! ── API ──────────────────────────────────────────────────────────────────────
-void    rs485SensorInit();              // call once in setup() — reads type from NVS
+void    rs485SensorInit();              // call once in setup() — reads type + soil model from NVS
 void    rs485SensorRead();              // call in loop() — internally throttled (5s)
 void    rs485ApplySensorType(uint8_t t);// call after web UI changes type (1/2/3)
 uint8_t rs485ActiveType();              // currently active type
+void    rs485SetSoilModel(uint8_t m);   // call after web UI changes soil model (0=Halisense,1=XS-MEC20)
+uint8_t rs485SoilModel();               // currently active soil model
 const char* rs485StatusLabel();         // "idle" / "ok" / "no response" — for UI/logs
