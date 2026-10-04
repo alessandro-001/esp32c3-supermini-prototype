@@ -4,6 +4,8 @@
 #include "web_server.h"
 #include <Arduino.h>
 
+extern int ldrThresh;
+
 //#include "driver/gpio.h"
 bool ldrLightOn = false;
 bool ldrOK      = false;
@@ -54,7 +56,6 @@ void ldrRead() {
         return;
     }
 
-    extern int ldrThresh;
     ldrOK      = true;
     ldrLightOn = (minVal > ldrThresh);  // high value = lit, low value = dark
     Serial.printf("[LDR] min=%d  valid=%d/5  thr=%d  light=%s\n",

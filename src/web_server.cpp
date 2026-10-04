@@ -218,10 +218,21 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
         <label style="margin-bottom:8px;">Select sensor type for this unit</label>
         <div style="display:flex;gap:8px;width:100%;margin-bottom:8px;">
           <button class="btn-wifi" style="flex:1;margin-top:0;padding:10px;" onclick="setSensorType(1)">Environment</button>
-          <button class="btn-wifi" style="flex:1;margin-top:0;padding:10px;" onclick="setSensorType(2)">Soil</button>
+          <button class="btn-wifi" style="flex:1;margin-top:0;padding:10px;" onclick="openSoilModelPopup()">Soil</button>
           <button class="btn-wifi" style="flex:1;margin-top:0;padding:10px;" onclick="setSensorType(3)">Mineral</button>
         </div>
         <div id="sensor-type-selected" style="font-family:var(--mono);font-size:0.8rem;color:var(--muted);">None selected</div>
+      </div>
+
+      <!-- Soil model popup — asks which soil probe is wired before saving sensor_type=2 -->
+      <div id="soil-model-popup" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center;">
+        <div style="background:var(--card-bg,#fff);border-radius:10px;padding:24px;max-width:360px;width:90%;">
+          <h3 style="margin-top:0;">Select Soil Probe</h3>
+          <p style="color:var(--muted);font-size:0.85rem;">Which soil sensor is wired to this unit?</p>
+          <button class="btn-wifi" style="width:100%;margin-top:8px;padding:10px;" onclick="confirmSoilModel(0)">🌱 Normal Soil (Halisense)</button>
+          <button class="btn-wifi" style="width:100%;margin-top:8px;padding:10px;" onclick="confirmSoilModel(1)">🧱 XS-MEC20 (VWC, EC and Temp Sensor)</button>
+          <button class="btn-wifi" style="width:100%;margin-top:8px;padding:10px;background:transparent;" onclick="closeSoilModelPopup()">Cancel</button>
+        </div>
       </div>
       <div class="row">
         <span class="row-label">Network Status</span>
@@ -333,11 +344,12 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
     <button class="btn-save" onclick="saveThresholds()">💾 Save Thresholds</button>
   </div>
 
-    <!-- ══════════ SOIL 7-IN-1 SECTION (sensor type 2) ══════════ -->
+    <!-- ══════════ SOIL SECTION (sensor type 2, Halisense or XS-MEC20) ══════════ -->
   <div class="card row-1col hidden" id="card-soil">
     <div class="card-header">
       <span class="card-icon">🌱</span>
-      <span class="card-title">Soil 7-in-1 Sensor (RS485)</span>
+      <span class="card-title">Soil Sensor (RS485)</span>
+      <span class="badge" id="soil-model-badge" style="margin-left:8px;">–</span>
       <span class="badge waiting" id="soil-status" style="margin-left:auto;">–</span>
     </div>
     <div class="sensor-grid" style="grid-template-columns:repeat(7,1fr);">
@@ -347,13 +359,13 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
         <div class="sensor-tile-val" id="soil-temp">– <span style="font-size:0.7rem;color:var(--muted);">°C</span></div></div>
       <div class="sensor-tile"><div class="sensor-tile-label">⚡ Soil EC</div>
         <div class="sensor-tile-val" id="soil-ec">– <span style="font-size:0.7rem;color:var(--muted);">uS/cm</span></div></div>
-      <div class="sensor-tile"><div class="sensor-tile-label">🧪 Soil pH</div>
+      <div class="sensor-tile npk-tile"><div class="sensor-tile-label">🧪 Soil pH</div>
         <div class="sensor-tile-val" id="soil-ph">–</div></div>
-      <div class="sensor-tile"><div class="sensor-tile-label">N</div>
+      <div class="sensor-tile npk-tile"><div class="sensor-tile-label">N</div>
         <div class="sensor-tile-val" id="soil-n">– <span style="font-size:0.7rem;color:var(--muted);">mg/kg</span></div></div>
-      <div class="sensor-tile"><div class="sensor-tile-label">P</div>
+      <div class="sensor-tile npk-tile"><div class="sensor-tile-label">P</div>
         <div class="sensor-tile-val" id="soil-p">– <span style="font-size:0.7rem;color:var(--muted);">mg/kg</span></div></div>
-      <div class="sensor-tile"><div class="sensor-tile-label">K</div>
+      <div class="sensor-tile npk-tile"><div class="sensor-tile-label">K</div>
         <div class="sensor-tile-val" id="soil-k">– <span style="font-size:0.7rem;color:var(--muted);">mg/kg</span></div></div>
     </div>
     <div class="chart-container"><canvas id="soilChart"></canvas></div>
@@ -367,9 +379,9 @@ const char HTML_PAGE[] PROGMEM = R"rawliteral(
         <input type="number" id="th-smoist-high" step="1" min="0" max="100"></div>
       <div class="thresh-item"><label>⚡ Max EC (uS/cm)</label>
         <input type="number" id="th-sec-high" step="50" min="0" max="20000"></div>
-      <div class="thresh-item"><label>🧪 Min pH</label>
+      <div class="thresh-item npk-tile"><label>🧪 Min pH</label>
         <input type="number" id="th-sph-low" step="0.1" min="0" max="14"></div>
-      <div class="thresh-item"><label>🧪 Max pH</label>
+      <div class="thresh-item npk-tile"><label>🧪 Max pH</label>
         <input type="number" id="th-sph-high" step="0.1" min="0" max="14"></div>
     </div>
     <button class="btn-save" onclick="saveSoilThresh()">💾 Save Soil Thresholds</button>
@@ -595,7 +607,7 @@ function pushChart(chart, values) {
   chart.update('none');
 }
 
-let soilChart = null, waterChart = null, currentSensorType = 1;
+let soilChart = null, waterChart = null, currentSensorType = 1, currentSoilModel = 0;
 
 function setTile(id, val, digits, alert) {
   const el = document.getElementById(id);
@@ -615,17 +627,21 @@ function updateRs485Ui(d) {
     setTile('soil-moist', d.soil_ok ? d.soil_moist : null, 1, d.alert_soil_moist);
     setTile('soil-temp',  d.soil_ok ? d.soil_temp  : null, 1, false);
     setTile('soil-ec',    d.soil_ok ? d.soil_ec    : null, 0, d.alert_soil_ec);
-    setTile('soil-ph',    d.soil_ok ? d.soil_ph    : null, 1, d.alert_soil_ph);
-    setTile('soil-n',     d.soil_ok ? d.soil_n     : null, 0, false);
-    setTile('soil-p',     d.soil_ok ? d.soil_p     : null, 0, false);
-    setTile('soil-k',     d.soil_ok ? d.soil_k     : null, 0, false);
+    const series  = [d.soil_moist, d.soil_temp, d.soil_ec / 100];
+    const labels  = [{ label: 'Moisture (%)', color: '#2d5d3f' },
+                      { label: 'Temp (°C)',     color: '#d4a137' },
+                      { label: 'EC (uS/cm ÷100)', color: '#c94c4c' }];
+    if (currentSoilModel === 0) {   // Halisense — pH/NPK meaningful
+      setTile('soil-ph', d.soil_ok ? d.soil_ph : null, 1, d.alert_soil_ph);
+      setTile('soil-n',  d.soil_ok ? d.soil_n  : null, 0, false);
+      setTile('soil-p',  d.soil_ok ? d.soil_p  : null, 0, false);
+      setTile('soil-k',  d.soil_ok ? d.soil_k  : null, 0, false);
+      series.push(d.soil_ph);
+      labels.push({ label: 'pH', color: '#4a7fb5' });
+    }
     if (d.soil_ok) {
-      if (!soilChart) soilChart = makeLineChart('soilChart', [
-        { label: 'Moisture (%)',  color: '#2d5d3f' },
-        { label: 'Temp (°C)',     color: '#d4a137' },
-        { label: 'EC (uS/cm ÷100)', color: '#c94c4c' },
-        { label: 'pH',            color: '#4a7fb5' }]);
-      pushChart(soilChart, [d.soil_moist, d.soil_temp, d.soil_ec / 100, d.soil_ph]);
+      if (!soilChart) soilChart = makeLineChart('soilChart', labels);
+      pushChart(soilChart, series);
     }
   } else if (currentSensorType === 3) {
     setStatusBadge('water-status', d.water_ok);
@@ -648,6 +664,26 @@ function applySensorTypeVisibility(t) {
   document.getElementById('step-thresh').classList.toggle('hidden', t !== 1);
   document.getElementById('card-soil').classList.toggle('hidden', t !== 2);
   document.getElementById('card-water').classList.toggle('hidden', t !== 3);
+}
+
+const SOIL_MODEL_LABELS = { 0: 'Normal Soil (Halisense)', 1: 'Substrate Sensor (XS-MEC20)' };
+
+// Additive to applySensorTypeVisibility — only touches the pH/NPK tiles
+// inside card-soil, never the step4/step-thresh/card-soil/card-water
+// visibility that sensor_type (1/2/3) already controls.
+function applySoilModelVisibility(m) {
+  currentSoilModel = m;
+  document.querySelectorAll('#card-soil .npk-tile').forEach(function(el) {
+    el.classList.toggle('hidden', m !== 0);
+  });
+  document.getElementById('soil-model-badge').textContent = SOIL_MODEL_LABELS[m] || '–';
+  soilChart = null;   // series count differs (Halisense adds pH) — rebuild on next update
+}
+
+function loadSoilModel() {
+  fetch('/get_soil_model').then(r => r.json()).then(d => {
+    applySoilModelVisibility(d.soil_model);
+  }).catch(() => {});
 }
 
 // ── RS485 thresholds ──────────────────────────────────────────────────────
@@ -956,10 +992,38 @@ function setSensorType(type) {
   .catch(() => showMsg('Failed to set sensor type', 'error'));
 }
 
+// Soil model popup — fires only for the "Soil" button, before sensor_type=2
+// is saved. Environment/Mineral go straight through setSensorType() as before.
+function openSoilModelPopup() {
+  document.getElementById('soil-model-popup').classList.remove('hidden');
+}
+function closeSoilModelPopup() {
+  document.getElementById('soil-model-popup').classList.add('hidden');
+}
+function confirmSoilModel(model) {
+  fetch('/set_soil_model', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'model=' + model
+  })
+  .then(r => r.json())
+  .then(res => {
+    if (res.status === 'ok') {
+      applySoilModelVisibility(model);
+      closeSoilModelPopup();
+      setSensorType(2);   // saves sensor_type=2 and shows card-soil, as before
+    } else {
+      showMsg('Failed to set soil model', 'error');
+    }
+  })
+  .catch(() => showMsg('Failed to set soil model', 'error'));
+}
+
 // Initialize on page load
 window.addEventListener('load', function() {
   updateStatus();
   loadSensorType();
+  loadSoilModel();
   loadThresholds();
   loadRs485Thresh();
   pollSensors();
@@ -1861,6 +1925,31 @@ static void handleSetSensorType() {
     server.send(200, "application/json", "{\"status\":\"ok\"}");
 }
 
+// Soil sensor model for UI display purposes (0=Halisense, 1=XS-MEC20)
+static void handleGetSoilModel() {
+    uint8_t m = rs485SoilModel();
+    char buf[80];
+    const char* labels[] = { "halisense", "xs-mec20" };
+    snprintf(buf, sizeof(buf),
+             "{\"soil_model\":%d,\"label\":\"%s\"}",
+             m, (m <= 1) ? labels[m] : labels[0]);
+    server.send(200, "application/json", buf);
+}
+
+static void handleSetSoilModel() {
+    if (!server.hasArg("model")) {
+        server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Missing model\"}");
+        return;
+    }
+    uint8_t m = (uint8_t)server.arg("model").toInt();
+    if (m > 1) {
+        server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"model must be 0 or 1\"}");
+        return;
+    }
+    rs485SetSoilModel(m);   // persists to NVS; live-switches UART baud if soil is active
+    server.send(200, "application/json", "{\"status\":\"ok\"}");
+}
+
 // ── Server Init — ALL routes registered before server.begin() ─────────────────
 void webServerInit() {
     server.on("/",                          handleRoot);
@@ -1891,6 +1980,8 @@ void webServerInit() {
     server.on("/broker_status", HTTP_GET,  handleBrokerStatus);
     server.on("/get_sensor_type", HTTP_GET,  handleGetSensorType);
     server.on("/set_sensor_type", HTTP_POST, handleSetSensorType);
+    server.on("/get_soil_model",  HTTP_GET,  handleGetSoilModel);
+    server.on("/set_soil_model",  HTTP_POST, handleSetSoilModel);
     server.on("/get_rs485_thresh", HTTP_GET,  handleGetRs485Thresh);
     server.on("/set_rs485_thresh",            handleSetRs485Thresh);
     server.on("/logs",          HTTP_GET,  handleLogs);

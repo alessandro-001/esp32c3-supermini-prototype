@@ -31,7 +31,7 @@
 
 //! ── Device Identity ──────────────────────────────────────────────────────────
 #define DEVICE_GROUP        "PROTO_BF_DEVICES"
-#define FIRMWARE_VERSION    "2.0.0"
+#define FIRMWARE_VERSION    "2.1.0"
 #define TEMP_OFFSET_DEFAULT  0.0f   // °C — negative to reduce reading
 
 //! ── Sensor Type ──────────────────────────────────────────────────────────────
@@ -56,5 +56,6 @@
 
 #define WATER_SENSOR_ADDR     1     // CWT-OYS-PHEC default slave ID
 #define WATER_SENSOR_BAUD     9600  // CWT default: 9600,N,8,1
-#define SOIL_SENSOR_ADDR      1     // Halisense default slave ID
-#define SOIL_SENSOR_BAUD      4800  // Halisense default: 4800,N,8,1
+#define SOIL_SENSOR_ADDR            1     // default slave ID for both soil probes
+#define SOIL_SENSOR_BAUD_HALISENSE  4800  // Halisense default: 4800,N,8,1
+#define SOIL_SENSOR_BAUD_XSMEC20    9600  // XS-MEC20 default: 9600,N,8,1

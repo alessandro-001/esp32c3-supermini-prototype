@@ -13,7 +13,7 @@ import os, sys, shutil, zipfile, urllib.request
 # ── Config ────────────────────────────────────────────────────────────────────
 SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR  = os.path.dirname(SCRIPT_DIR)
-OUTPUT_ZIP   = os.path.join(SCRIPT_DIR, "IESWIC6_v2_FLASHER.zip")
+OUTPUT_ZIP   = os.path.join(SCRIPT_DIR, "IESWIC6_v2_FLASHER(v4.0).zip")
 BUNDLE_ROOT  = "IESWIC6_v2_FLASHER"
 
 # All 4 firmware files needed — address : source path
@@ -29,7 +29,7 @@ FIRMWARE_FILES = {
 ESPTOOL_URL   = "https://github.com/espressif/esptool/releases/download/v4.8.1/esptool-v4.8.1-win64.zip"
 ESPTOOL_CACHE = os.path.join(SCRIPT_DIR, "_esptool_win64.zip")
 
-EXCLUDE_PATTERNS = ["__pycache__", "*.pyc", ".git", ".gitignore", "*.zip", "_esptool_win64.zip"]
+EXCLUDE_PATTERNS = ["__pycache__", "*.pyc", ".git", ".gitignore", "*.zip", "_esptool_win64.zip", "launch.bat"]
 # ─────────────────────────────────────────────────────────────────────────────
 
 BANNER = """
@@ -108,8 +108,7 @@ if %errorlevel% neq 0 (
 """
 
 def create_readme():
-    return """\
-=================================================
+    return r"""=================================================
 IES-WI-C6A x BossFarm — Firmware Flasher v2.0.0
 =================================================
 
