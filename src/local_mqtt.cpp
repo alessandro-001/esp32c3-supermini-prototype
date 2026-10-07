@@ -63,6 +63,14 @@ static const char* sensorTypeLabel(uint8_t type) {
   }
 }
 
+// Which physical soil probe is active (sensor_type==2 only) — exposed over
+// MQTT so the Pi-side dashboard doesn't have to infer it from an all-zero
+// NPK/pH heuristic, which a genuine Halisense probe with poor substrate
+// contact can also produce.
+static const char* soilModelLabel(uint8_t model) {
+  return model == 1 ? "xs_mec20" : "halisense";
+}
+
 static const char* measurementFromSensorType(uint8_t type) {
   switch (type) {
     case 1: return "telemetry";
@@ -464,10 +472,8 @@ void localMqttPublish() {
         boolNum(ldrLightOn)
       );
     }
-  } else if (gSensorType == 2) {
-    // Soil sensor (Halisense or XS-MEC20, see rs485SoilModel()). ph/n/p/k
-    // are populated for Halisense, always 0 for XS-MEC20 — kept in the
-    // payload either way so the Pi-side schema stays stable.
+  } else if (gSensorType == 2 && rs485SoilModel() == 0) {
+    // Soil sensor, Halisense — full 7-metric payload (moisture/temp/ec/ph/n/p/k), unchanged.
     if (timestamp.length() > 0) {
       snprintf(
         payload,
@@ -478,6 +484,8 @@ void localMqttPublish() {
           "\"reading\":{"
             "\"sensor_type\":%u,"
             "\"sensor_type_label\":\"%s\","
+            "\"soil_model\":%u,"
+            "\"soil_model_label\":\"%s\","
             "\"firmware\":\"%s\","
             "\"rssi\":%d,"
             "\"sensor_ok\":%s,"
@@ -497,6 +505,8 @@ void localMqttPublish() {
         timestamp.c_str(),
         gSensorType,
         sensorTypeLabel(gSensorType),
+        rs485SoilModel(),
+        soilModelLabel(rs485SoilModel()),
         FIRMWARE_VERSION,
         WiFi.RSSI(),
         boolText(soilOK),
@@ -515,6 +525,8 @@ void localMqttPublish() {
           "\"reading\":{"
             "\"sensor_type\":%u,"
             "\"sensor_type_label\":\"%s\","
+            "\"soil_model\":%u,"
+            "\"soil_model_label\":\"%s\","
             "\"firmware\":\"%s\","
             "\"rssi\":%d,"
             "\"sensor_ok\":%s,"
@@ -533,6 +545,8 @@ void localMqttPublish() {
         deviceId.c_str(),
         gSensorType,
         sensorTypeLabel(gSensorType),
+        rs485SoilModel(),
+        soilModelLabel(rs485SoilModel()),
         FIRMWARE_VERSION,
         WiFi.RSSI(),
         boolText(soilOK),
@@ -541,6 +555,82 @@ void localMqttPublish() {
         boolText(alertSoilMoist),
         boolText(alertSoilEc),
         boolText(alertSoilPh)
+      );
+    }
+  } else if (gSensorType == 2) {
+    // Soil sensor, XS-MEC20 — only the 3 parameters this probe actually
+    // measures (moisture/VWC, temperature, EC). No ph/n/p/k here at all —
+    // unlike Halisense, this probe doesn't have them, so Hin asked for the
+    // payload itself to reflect that instead of carrying always-zero
+    // placeholder fields. soil_model/soil_model_label is how the Pi side
+    // tells this shape apart from Halisense's.
+    if (timestamp.length() > 0) {
+      snprintf(
+        payload,
+        sizeof(payload),
+        "{"
+          "\"device_id\":\"%s\","
+          "\"timestamp\":\"%s\","
+          "\"reading\":{"
+            "\"sensor_type\":%u,"
+            "\"sensor_type_label\":\"%s\","
+            "\"soil_model\":%u,"
+            "\"soil_model_label\":\"%s\","
+            "\"firmware\":\"%s\","
+            "\"rssi\":%d,"
+            "\"sensor_ok\":%s,"
+            "\"moisture\":%.1f,"
+            "\"temperature\":%.1f,"
+            "\"ec\":%.0f,"
+            "\"alert_moist\":%s,"
+            "\"alert_ec\":%s"
+          "}"
+        "}",
+        deviceId.c_str(),
+        timestamp.c_str(),
+        gSensorType,
+        sensorTypeLabel(gSensorType),
+        rs485SoilModel(),
+        soilModelLabel(rs485SoilModel()),
+        FIRMWARE_VERSION,
+        WiFi.RSSI(),
+        boolText(soilOK),
+        soilMoist, soilTemp, soilEc,
+        boolText(alertSoilMoist),
+        boolText(alertSoilEc)
+      );
+    } else {
+      snprintf(
+        payload,
+        sizeof(payload),
+        "{"
+          "\"device_id\":\"%s\","
+          "\"reading\":{"
+            "\"sensor_type\":%u,"
+            "\"sensor_type_label\":\"%s\","
+            "\"soil_model\":%u,"
+            "\"soil_model_label\":\"%s\","
+            "\"firmware\":\"%s\","
+            "\"rssi\":%d,"
+            "\"sensor_ok\":%s,"
+            "\"moisture\":%.1f,"
+            "\"temperature\":%.1f,"
+            "\"ec\":%.0f,"
+            "\"alert_moist\":%s,"
+            "\"alert_ec\":%s"
+          "}"
+        "}",
+        deviceId.c_str(),
+        gSensorType,
+        sensorTypeLabel(gSensorType),
+        rs485SoilModel(),
+        soilModelLabel(rs485SoilModel()),
+        FIRMWARE_VERSION,
+        WiFi.RSSI(),
+        boolText(soilOK),
+        soilMoist, soilTemp, soilEc,
+        boolText(alertSoilMoist),
+        boolText(alertSoilEc)
       );
     }
   } else {

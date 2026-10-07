@@ -5,6 +5,7 @@
 #include <Arduino.h>
 #include <HardwareSerial.h>
 #include <Preferences.h>
+#include <string.h>
 
 //* RS485 Modbus RTU driver — CWT Water pH/EC + Soil (Halisense or XS-MEC20)
 //* Single shared Modbus transport, per-sensor register maps & scaling.
@@ -160,6 +161,65 @@ static bool modbusReadHolding(uint8_t addr, uint16_t startReg, uint16_t count, u
     return true;
 }
 
+// ── Core Modbus transaction: FC 0x06 Write Single Holding Register ──────────
+// Request/response are both AA 06 RRRR VVVV CCCC — slave echoes the request
+// verbatim on success. Returns true only if the echo matches exactly.
+static bool modbusWriteSingle(uint8_t addr, uint16_t reg, uint16_t value) {
+    if (!_uartReady) return false;
+
+    uint8_t req[8];
+    req[0] = addr;
+    req[1] = 0x06;
+    req[2] = (uint8_t)(reg >> 8);
+    req[3] = (uint8_t)(reg & 0xFF);
+    req[4] = (uint8_t)(value >> 8);
+    req[5] = (uint8_t)(value & 0xFF);
+    uint16_t crc = modbusCrc16(req, 6);
+    req[6] = (uint8_t)(crc & 0xFF);
+    req[7] = (uint8_t)(crc >> 8);
+
+    rs485Flush();
+
+    digitalWrite(RS485_DE_PIN, HIGH);
+    delayMicroseconds(100);
+    RS485.write(req, sizeof(req));
+    RS485.flush();
+    delayMicroseconds(100);
+    digitalWrite(RS485_DE_PIN, LOW);
+
+    const size_t expected = 8;   // echo is the same 8-byte shape as the request
+    uint8_t buf[8];
+    size_t  got = 0;
+    uint32_t t0 = millis();
+
+    while (got < expected && (millis() - t0) < RS485_TIMEOUT_MS) {
+        int avail = RS485.available();
+        while (avail-- > 0 && got < sizeof(buf)) {
+            buf[got++] = (uint8_t)RS485.read();
+        }
+        if (got < expected) delay(2);
+    }
+
+    if (got == 0) {
+        Serial.println("[RS485] write timeout — no response");
+        return false;
+    }
+
+    if (got >= 5 && buf[0] == addr && buf[1] == (0x80 | 0x06)) {
+        Serial.printf("[RS485] write exception 0x%02X from addr %u (reg 0x%04X)\n",
+                      buf[2], addr, reg);
+        return false;
+    }
+
+    if (got != expected || memcmp(buf, req, 8) != 0) {
+        Serial.printf("[RS485] write reg 0x%04X — bad/short echo (got %u bytes)\n",
+                      reg, (unsigned)got);
+        return false;
+    }
+
+    return true;
+}
+
 // ── Sensor 3: CWT-OYS-PHEC Water pH/EC ───────────────────────────────────────
 // Regs 0x0000..0x0002: pH(/100), EC(raw uS/cm), Temp(/10)
 static bool readWaterSensor() {
@@ -226,21 +286,35 @@ static bool readSoilSensorHalisense() {
 }
 
 // ── Sensor 2b: XS-MEC20 Soil VWC/EC ──────────────────────────────────────────
-// Regs 0x0000..0x0002: Temp(/100 signed), VWC(/100), EC(raw). No NPK/pH on
-// this sensor — soilPh/N/P/K are zeroed below and kept only so the MQTT/REST
-// JSON schema (which still has ph/n/p/k keys) stays stable for downstream
-// consumers. alertSoilPh is forced false for the same reason: a soilPh stuck
-// at 0.0 would otherwise trip threshSoilPhLow forever (same class of bug as
-// the 73ec809 stale-field-poisons-downstream-logic fix).
+// Regs 0x0000..0x0009: Temp(/100 signed), VWC(/100), EC(raw), Salinity(raw),
+// TDS(raw), Epsilon(/100), reserved, VWC_RAWAD(raw), reserved, PoreEC(raw).
+// soilMoist/soilTemp/soilEc still come only from regs 0x0000-0x0002 — the
+// rest (0x0003-0x0009) are read and logged as diagnostics only, not wired
+// into alerts/MQTT yet. In particular POREEC is a substrate/pore-water-
+// corrected EC calculation, distinct from the raw bulk EC at 0x0002 — more
+// representative for rockwool's pore structure than bulk EC, worth watching
+// to see whether it reads differently from a bulk EC stuck at its 10us/cm
+// resolution floor.
+//
+// No NPK/pH on this sensor — soilPh/N/P/K are zeroed below and kept only so
+// the MQTT/REST JSON schema (which still has ph/n/p/k keys) stays stable for
+// downstream consumers. alertSoilPh is forced false for the same reason: a
+// soilPh stuck at 0.0 would otherwise trip threshSoilPhLow forever (same
+// class of bug as the 73ec809 stale-field-poisons-downstream-logic fix).
 static bool readSoilSensorXsMec20() {
-    uint16_t w[3];
-    if (!modbusReadHolding(SOIL_SENSOR_ADDR, 0x0000, 3, w)) return false;
+    uint16_t w[10];
+    if (!modbusReadHolding(SOIL_SENSOR_ADDR, 0x0000, 10, w)) return false;
 
-    float t     = (int16_t)w[0] / 100.0f;    // signed: range -40..80 degC
-    float moist = w[1] / 100.0f;             // VWC %
-    float ec    = (float)w[2];
+    float t        = (int16_t)w[0] / 100.0f;   // signed: range -40..80 degC
+    float moist    = w[1] / 100.0f;            // VWC %
+    float ec       = (float)w[2];
+    float salinity = (float)w[3];
+    float tds      = (float)w[4];
+    float epsilon  = w[5] / 100.0f;
+    float vwcRaw   = (float)w[7];
+    float poreEc   = (float)w[9];
 
-    // Sanity envelope (datasheet ranges)
+    // Sanity envelope (datasheet ranges) — only on the fields we actually use.
     if (moist < 0.0f || moist > 100.0f || t < -45.0f || t > 85.0f ||
         ec < 0.0f || ec > 20000.0f) {
         Serial.printf("[RS485:Soil] out-of-range reading rejected VWC=%.2f T=%.2f EC=%.0f\n",
@@ -255,10 +329,11 @@ static bool readSoilSensorXsMec20() {
     alertSoilEc    = (soilEc > threshSoilEcHigh);
     alertSoilPh    = false;                            // no pH on this sensor
 
-    Serial.printf("[RS485:Soil] VWC:%.2f%%  T:%.2f degC  EC:%.0f uS/cm\n",
-                  soilMoist, soilTemp, soilEc);
+    Serial.printf("[RS485:Soil] VWC:%.2f%%  T:%.2f degC  EC:%.0f uS/cm"
+                  "  (diag: salinity:%.0f tds:%.0f epsilon:%.2f vwcRaw:%.0f poreEC:%.0f)\n",
+                  soilMoist, soilTemp, soilEc, salinity, tds, epsilon, vwcRaw, poreEc);
     logPush("[Soil] VWC:" + String(soilMoist, 2) + "% T:" + String(soilTemp, 2) +
-            "\u00b0C EC:" + String(soilEc, 0));
+            "\u00b0C EC:" + String(soilEc, 0) + " poreEC:" + String(poreEc, 0));
     return true;
 }
 
@@ -274,6 +349,23 @@ static void invalidateReadings() {
 static uint32_t soilModelBaud()        { return _soilModel == 1 ? SOIL_SENSOR_BAUD_XSMEC20 : SOIL_SENSOR_BAUD_HALISENSE; }
 static const char* soilModelLabel()    { return _soilModel == 1 ? "XS-MEC20" : "Halisense Soil 7-in-1"; }
 
+// XS-MEC20 SOILTYPE register (0x0020) defaults to 0=Mineral on the sensor
+// itself and is never touched otherwise — writing 5=Soilless(Rockwool, etc)
+// here each time the driver activates is what actually tells the sensor
+// which calibration curve to use for VWC. Idempotent (same value every
+// call) and cheap (one FC06 transaction), so it's simplest to just always
+// write it on activation rather than tracking whether a given physical
+// unit has already been configured.
+static void configureXsMec20Calibration() {
+    const uint16_t SOILTYPE_REG = 0x0020;
+    const uint16_t SOILTYPE_SOILLESS_ROCKWOOL = 5;
+    if (modbusWriteSingle(SOIL_SENSOR_ADDR, SOILTYPE_REG, SOILTYPE_SOILLESS_ROCKWOOL)) {
+        Serial.println("[RS485] XS-MEC20 SOILTYPE -> 5 (Soilless/Rockwool) OK");
+    } else {
+        Serial.println("[RS485] XS-MEC20 SOILTYPE write failed — VWC may use the wrong calibration curve");
+    }
+}
+
 void rs485ApplySensorType(uint8_t type) {
     if (type < 1 || type > 3) type = 1;
     _activeType = type;
@@ -282,6 +374,7 @@ void rs485ApplySensorType(uint8_t type) {
     switch (_activeType) {
         case 2:
             rs485BeginUart(soilModelBaud());
+            if (_soilModel == 1) configureXsMec20Calibration();
             Serial.printf("[RS485] Active driver: Soil (%s)\n", soilModelLabel());
             logPush("[RS485] driver -> Soil (" + String(soilModelLabel()) + ")");
             break;

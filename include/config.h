@@ -3,7 +3,7 @@
 #include "secrets.h"
 
 //! ── Access Point ─────────────────────────────────────────────────────────────
-#define AP_SSID             "ESP32C6_Hotspot"
+#define AP_SSID             "IES-WI-C6A_Hotspot"
 
 //! ── Hardware Pins ESP32-C6 ───────────────────────────────────────────────────
 #define NEOPIXEL_PIN        20 // 3 (old)
@@ -31,7 +31,7 @@
 
 //! ── Device Identity ──────────────────────────────────────────────────────────
 #define DEVICE_GROUP        "PROTO_BF_DEVICES"
-#define FIRMWARE_VERSION    "2.1.0"
+#define FIRMWARE_VERSION    "2.2.0"
 #define TEMP_OFFSET_DEFAULT  0.0f   // °C — negative to reduce reading
 
 //! ── Sensor Type ──────────────────────────────────────────────────────────────

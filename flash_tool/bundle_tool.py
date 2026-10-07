@@ -13,7 +13,7 @@ import os, sys, shutil, zipfile, urllib.request
 # ── Config ────────────────────────────────────────────────────────────────────
 SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR  = os.path.dirname(SCRIPT_DIR)
-OUTPUT_ZIP   = os.path.join(SCRIPT_DIR, "IESWIC6_v2_FLASHER(v4.0).zip")
+OUTPUT_ZIP   = os.path.join(SCRIPT_DIR, "IESWIC6_v2_FLASHER(v4.4).zip")
 BUNDLE_ROOT  = "IESWIC6_v2_FLASHER"
 
 # All 4 firmware files needed — address : source path

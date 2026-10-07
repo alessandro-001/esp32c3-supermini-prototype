@@ -658,12 +658,34 @@ function updateRs485Ui(d) {
   }
 }
 
+// Sensor Type badge in the Device Information card needs to know both the
+// device category AND, for soil devices, which probe — "Soil" for Halisense,
+// "Rockwool" for XS-MEC20, since that's the substrate it's actually used in.
+// Takes explicit params rather than reading currentSensorType/currentSoilModel
+// directly so callers that are mid-transition (e.g. setSensorType, which
+// hasn't updated currentSensorType yet when it builds this label) can't show
+// a stale value from the other axis.
+function soilAwareSensorTypeLabel(type, soilModel) {
+  if (type === 2) return soilModel === 1 ? 'Rockwool' : 'Soil';
+  return SENSOR_LABELS[type] || '–';
+}
+
 function applySensorTypeVisibility(t) {
   currentSensorType = t;
   document.getElementById('step4').classList.toggle('hidden', t !== 1);
   document.getElementById('step-thresh').classList.toggle('hidden', t !== 1);
   document.getElementById('card-soil').classList.toggle('hidden', t !== 2);
   document.getElementById('card-water').classList.toggle('hidden', t !== 3);
+  document.getElementById('sensor-type-badge').textContent = soilAwareSensorTypeLabel(t, currentSoilModel);
+  // A chart can be created (first poll) while its card is still hidden —
+  // Chart.js then measures a 0-height canvas and can be left in a bad
+  // internal state that plain .resize() doesn't reliably recover from on
+  // every browser (seen persisting on Android even after a resize-only
+  // fix). Destroying and letting the next poll recreate it from scratch
+  // is more robust: a fresh Chart.js instance always measures the canvas
+  // only after visibility/layout have settled, no repair needed.
+  if (soilChart)  { soilChart.destroy();  soilChart  = null; }
+  if (waterChart) { waterChart.destroy(); waterChart = null; }
 }
 
 const SOIL_MODEL_LABELS = { 0: 'Normal Soil (Halisense)', 1: 'Substrate Sensor (XS-MEC20)' };
@@ -677,7 +699,12 @@ function applySoilModelVisibility(m) {
     el.classList.toggle('hidden', m !== 0);
   });
   document.getElementById('soil-model-badge').textContent = SOIL_MODEL_LABELS[m] || '–';
-  soilChart = null;   // series count differs (Halisense adds pH) — rebuild on next update
+  document.getElementById('sensor-type-badge').textContent = soilAwareSensorTypeLabel(currentSensorType, m);
+  // Series count differs (Halisense adds pH) — rebuild on next update. Must
+  // destroy before discarding the reference: reusing the same <canvas> for
+  // a new Chart() while an old instance is still attached to it is a known
+  // Chart.js failure (silently broken or throws "canvas already in use").
+  if (soilChart) { soilChart.destroy(); soilChart = null; }
 }
 
 function loadSoilModel() {
@@ -964,9 +991,7 @@ const SENSOR_LABELS = { 1: 'Environment', 2: 'Soil', 3: 'Mineral' };
 
 function loadSensorType() {
   fetch('/get_sensor_type').then(r => r.json()).then(d => {
-    const label = SENSOR_LABELS[d.sensor_type] || '–';
-    document.getElementById('sensor-type-badge').textContent = label;
-    applySensorTypeVisibility(d.sensor_type);
+    applySensorTypeVisibility(d.sensor_type);   // also sets sensor-type-badge, soil-aware
   }).catch(() => {});
 }
 
@@ -980,11 +1005,10 @@ function setSensorType(type) {
   .then(res => {
     if (res.status === 'ok') {
       document.getElementById('sensor-type-selected').textContent =
-        '✓ Set to ' + (SENSOR_LABELS[type] || type);
+        '✓ Set to ' + soilAwareSensorTypeLabel(type, currentSoilModel);
       document.getElementById('sensor-type-selected').style.color = 'var(--green)';
-      document.getElementById('sensor-type-badge').textContent = SENSOR_LABELS[type] || type;
 
-      applySensorTypeVisibility(type);
+      applySensorTypeVisibility(type);   // also sets sensor-type-badge, soil-aware
 
       showMsg('✓ Sensor type saved', 'success');
     }
